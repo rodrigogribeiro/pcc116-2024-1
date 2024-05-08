@@ -93,27 +93,109 @@ section PropLogic
 
   
 -- Negação  
+-- ¬ A ≃ A → False  
 
-  lemma modus1 : ((A → B) ∧ ¬ B) → ¬ A := sorry 
+  lemma modus1 : ((A → B) ∧ ¬ B) → ¬ A := by 
+    intros H 
+    rcases H with ⟨ H1 , H2 ⟩ 
+    intros HA 
+    have HB : B := by 
+      apply H1 
+      exact HA
+    contradiction
 
-  lemma contraEx : A → ¬ A → B := sorry 
+/-
+H1 : A -> B 
+-----------------
+B
+
+apply H1 
+
+H1 : A -> B 
+--------------
+A 
+
+
+
+====> 
+A -> B          A
+------------------
+       B
+-/
+
+
+  lemma modus2 : ((A → B) ∧ ¬ B) → ¬ A := by 
+    intros H 
+    rcases H with ⟨ H1 , H2 ⟩ 
+    intros HA 
+    apply H2
+    apply H1 
+    exact HA
+
+  lemma contraEx : A → ¬ A → B := by 
+    intros H H1 
+    contradiction
+    
 
 -- disjunção 
+  /-
+  Γ |- A ∨ B    Γ ∪ {A} |- C    Γ ∪ {B} |- C
+  ------------------------------------------
+        Γ |- C
 
-  lemma or_comm1 : (A ∨ B) ↔ (B ∨ A) := sorry 
-  lemma orex2 : ((A ∨ B) ∧ ¬ A) → B := sorry 
+  -/
+
+
+
+  lemma or_comm1 : (A ∨ B) → (B ∨ A) := by 
+    intros H 
+    rcases H with H1 | H2 
+    · 
+      right 
+      exact H1 
+    · 
+      left 
+      exact H2 
+
+
+
+  lemma orex2 : ((A ∨ B) ∧ ¬ A) → B := by 
+    intros H 
+    rcases H with ⟨ H1 , H2 ⟩ 
+    rcases H1 with H3 | H4 
+    · 
+      contradiction
+    · 
+      exact H4 
 
 -- Exercício 8
 
-  lemma ex8 : (A ∨ (B ∧ C)) -> (A ∨ B) ∧ (A ∨ C) := sorry 
+  lemma ex8 : (A ∨ (B ∧ C)) → (A ∨ B) ∧ (A ∨ C) := sorry 
 
 -- Lógica clássica
 
   open Classical 
 
+  -- excluded middle 
+
   #check (em A)
 
-  lemma doubleNeg : ¬ (¬ A) ↔ A := sorry 
+  lemma doubleNeg : ¬ (¬ A) ↔ A := by  
+    apply Iff.intro 
+    · 
+      have H1 : A ∨ ¬ A := em A 
+      rcases H1 with H1 | H2 
+      · 
+        intros _H3 
+        exact H1
+      · 
+        intros H3 
+        contradiction
+    · 
+      intros H H1
+      contradiction
+
+
 
 -- Exercício 9
 

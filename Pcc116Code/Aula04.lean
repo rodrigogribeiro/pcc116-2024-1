@@ -70,11 +70,56 @@ theorem plus_comm (n m : N) : n .+. m = m .+. n := by
   | succ n' IHn' => 
     simp only [plus, IHn', plus_succ]
 
-
-
-
 theorem plus_assoc (n m p) 
-  : n .+. m .+. p = n .+. (m .+. p) := sorry 
+  : n .+. m .+. p = n .+. (m .+. p) := by 
+    induction n with 
+    | zero => 
+      simp only [plus] -- forall . x = x
+    | succ n' IHn' => 
+      simp only [plus, IHn']
+
+-- implementar multiplicação e sua prova de comutatividade 
+-- e associatividade. 
+
+def mult (n m : N) : N := 
+  match n with 
+  | N.zero => N.zero 
+  | N.succ n' => m .+. (mult n' m)
+
+infix:65 " .*. " => mult
+
+lemma mult_0_r (n : N) : n .*. N.zero = N.zero := by 
+  induction n with 
+  | zero => 
+    simp only [mult]
+  | succ n' IHn' => 
+    simp only [mult, plus, IHn']
+
+lemma plus_comm_3 (n m p : N) : 
+  n .+. m .+. p = m .+. n .+. p := by 
+  induction n with 
+  | zero => simp [plus, plus_0_r]
+  | succ n' IHn' => 
+    simp [plus, IHn', ← plus_succ]
+
+lemma mult_succ (m n : N) : 
+  m .*. succ n = m .+. m .*. n := by 
+  induction m with 
+  | zero => 
+    simp [mult, plus]
+  | succ m' IHm' => 
+    simp [mult, plus, IHm']
+    simp [← (plus_assoc _ _ (m' .*. n))
+         , plus_comm_3]
+    
+
+theorem mult_comm (n m : N) 
+  : n .*. m = m .*. n := by 
+  induction n with 
+  | zero => 
+    simp only [mult, mult_0_r]
+  | succ n' IHn' => 
+    simp only [mult, IHn', mult_succ] 
 
 -- definição de double 
 
@@ -83,9 +128,32 @@ def double (n : N) : N :=
   | zero => zero 
   | succ n' => succ (succ (double n'))
 
-lemma double_correct n : double n = n .+. n := sorry 
+lemma double_correct n : double n = n .+. n := by 
+  induction n with 
+  | zero => 
+    simp [double, plus]
+  | succ n' IHn' => 
+    simp [double] 
+    simp [plus] 
+    simp [IHn'] 
+    simp [plus_succ]
+
+lemma double_correct1 n : double n = (toN 2) .*. n := by 
+  induction n with 
+  | zero => 
+    simp [double] 
+    simp [toN] 
+    simp [mult]
+    simp [plus]
+  | succ n' IHn' => 
+    simp [double]
+    simp [IHn', toN]
+    simp [mult, plus]
+    simp [plus_succ]
 
 -- teste de igualdade 
+
+-- Prop ≃ Bool: isomorficas. 
 
 def eqN (n m : N) : Bool := 
   match n , m with 
@@ -93,15 +161,68 @@ def eqN (n m : N) : Bool :=
   | succ n', succ m' => eqN n' m' 
   | _ , _ => false 
 
-lemma eqN_refl n : eqN n n = true := sorry 
+lemma eqN_refl n : eqN n n = true := by 
+  induction n with 
+  | zero => simp [eqN]
+  | succ n' IHn' => simp [eqN, IHn']
 
-lemma eqN_correct : eqN n m = true → n = m := sorry 
+-- generalizar a hipótese de indução.
 
--- definição da multiplicação e prova de comutatividade 
--- e associatividade.
+/-
+∀ (x : A), P x -- mais geral 
+
+A → P = ∀ (_ : A), P -- x não ocorre em P
+-/
+
+lemma eqN_sound n m : eqN n m = true → n = m := by 
+  revert m
+  induction n with 
+  | zero =>
+    intros m
+    rcases m with _ | m' <;> simp [eqN]
+  | succ n' IHn' => 
+    intros m 
+    rcases m with _ | m' <;> simp [eqN]
+    apply IHn'
+
+lemma eqN_complete n m 
+  : n = m → eqN n m = true := by 
+  intros Heq 
+  rw [Heq, eqN_refl]
+  
+lemma eqN_sound_neq n m : eqN n m = false → n ≠ m := sorry 
+
+lemma eqN_complete_neq n m : n ≠ m → eqN n m = false := sorry 
+
+def leb (n m : N) : Bool := 
+  match n, m with 
+  | N.zero, _ => true 
+  | N.succ _, N.zero => false 
+  | N.succ n', N.succ m' => leb n' m' 
+
+infix:60 " .<=. " => leb 
+
+lemma leb_refl n : n .<=. n = true := by 
+  induction n with 
+  | zero => simp [leb]
+  | succ n' IHn' => simp [leb, IHn']
+
+lemma leb_trans n m p : n .<=. m → 
+                        m .<=. p → 
+                        n .<=. p := by 
+  revert m p 
+  induction n with 
+  | zero => intros _m _p _H1 _H2 
+            simp [leb]
+  | succ n' IHn' => 
+    intros m p H1 H2
+    rcases m with _ | m' <;> 
+    rcases p with _ | p' <;> 
+    simp [leb] at *
+    apply (IHn' m') <;> assumption 
 
 
--- Números em binário
+-- Exercícios: Números em binário
 /-
 Considere o tipo de dados seguinte que representa 
 números em binário de forma que o bit mais significativo 
@@ -122,7 +243,7 @@ Número natural  Valor do tipo B
 0               Z 
 1               B1 Z 
 2               B0 (B1 Z)
-3               B1 (B0 (B1 Z))
+3               B1 (B1 Z)
 4               B0 (B0 (B1 Z))
 ...
 -/

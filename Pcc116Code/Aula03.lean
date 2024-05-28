@@ -227,19 +227,19 @@ Para representar os possíveis resultados de
 comparação, vamos criar o tipo cmp 
 -/
 
-inductive cmp := 
+inductive cmp1 := 
 | Lt | EQ | Gt 
 deriving Repr 
 
 open letter 
 open modifier 
 open grade 
-open cmp 
+open cmp1 
 
 -- Exercício 1. Comparando letras
 -- Desenvolva a função 
 
-def letter_cmp (l1 l2 : letter) : cmp := sorry 
+def letter_cmp (l1 l2 : letter) : cmp1 := sorry 
 
 /-
 que deve comparar notas considerando que a maior é A 
@@ -252,7 +252,7 @@ theorem letter_cmp_refl l : letter_cmp l l = EQ := sorry
 
 -- Exercício 3. Desenvolva a função 
 
-def modifier_cmp (m1 m2 : modifier) : cmp := sorry 
+def modifier_cmp (m1 m2 : modifier) : cmp1 := sorry 
 
 /-
 que deve comparar modificadores considerando que 
@@ -261,7 +261,7 @@ Plus > Plain > Minus.
 
 -- Exercício 4. Desenvolva a função 
 
-def grade_cmp (g1 g2 : grade) : cmp := sorry 
+def grade_cmp (g1 g2 : grade) : cmp1 := sorry 
 
 /-
 A comparação de notas deve proceder da seguinte forma:

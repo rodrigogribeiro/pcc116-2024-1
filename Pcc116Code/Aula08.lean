@@ -11,15 +11,37 @@ def listHead {A : Type}(xs : List A) : Option A :=
 
 -- head : List A -> A 
 -- parcial. 
--- totais! 
+-- totais!
+
+-- Categorias de sistemas de tipos:
+---- Unitipados.
+---- Tipagem simples (não tem polimorfismo: C, Pascal)
+---- Polimórficas (C++, Java, Rust, Haskell, Lean, etc...)
+------ Polimorfismo paramétrico 
+--------- funções / tipos de dados uniformes sobre dif. tipos
+---- Tipos dependentes
+------ Tipos podem ser parametrizados por valores quaisquer. 
+
+
+def idBool (b : Bool) : Bool := b 
+def idNat (n : ℕ) : ℕ := n
+
+def idall {A : Type}(x : A) := x 
+
+-- funções que recebem tipos como argumentos. 
+
 /-
 inductive Option (A : Type) where 
 | none : Option A 
 | some : A → Option A 
 
-exceptions are bad! exceptions = goto 
+tornar funções parciais em funções totais 
 -/
 
+def test1 : Option Bool := .none 
+def test2 : Option Bool := .some true 
+
+-- exceptions. 
 
 -- problema: inconveniente, pois isso obriga a clientes 
 -- a realizar casamento de padrão sobre um valor de tipo 
@@ -54,7 +76,7 @@ lemma plus_add (n m : ℕ) : n + m = plus n m := by
 
 inductive Vec (A : Type) : ℕ → Type where 
 | nil  : Vec A 0 
-| cons : ∀ {n}, A → Vec A n → Vec A (plus 1 n)
+| cons : ∀ {n : ℕ}, A → Vec A n → Vec A (plus 1 n)
 deriving Repr 
 
 def ex1 : Vec ℕ 0 := Vec.nil 
@@ -70,9 +92,11 @@ section VEC
 
   -- safe head 
 
-  def vhead {n : ℕ}(v : Vec A (n + 1)) : A := 
+  def vhead {n : ℕ}(v : Vec A (plus 1 n)) : A := 
      match v with 
      | Vec.cons x _ => x  
+  
+  #eval vhead ex2
   -- aqui o Lean é capaz de determinar que não é possível  
   -- usar o construtor nil
   -- ∀ n x, length (replicate n x) = n
@@ -81,19 +105,22 @@ section VEC
   def vreplicate (n : ℕ)(x : A) : Vec A n := 
     match n with 
     | 0 => Vec.nil 
-    | n + 1 => Vec.cons x (vreplicate n x)
+    | n' + 1 => Vec.cons x (vreplicate n' x)
 
   def toList {n}(xs : Vec A n) : List A := 
     match xs with 
     | Vec.nil => [] 
     | Vec.cons x xs => x :: (toList xs)
 
+-- correta por construção 
+--  ∀ (xs ys : List A), 
+--      length (xs ++ ys) = length xs + length ys
+
 def vapp {n m : ℕ}(xs : Vec A n)(ys : Vec A m) 
   : Vec A (plus n m) :=
   match xs with 
   | Vec.nil => ys 
   | Vec.cons z zs => Vec.cons z (vapp zs ys)
-
 
 -- zipping two lists 
 
@@ -111,12 +138,30 @@ def Vec.zip {A B : Type}{n}
   | Vec.cons x xs, Vec.cons y ys => 
     Vec.cons (x,y) (Vec.zip xs ys)
 
+-- bugs relacionados a acesso inválido em arranjos.
+---- ArrayIndexOutOfBoundsException
+
 -- lookup function 
 
 inductive fin : ℕ → Type where 
 | zero : ∀ {n}, fin (n + 1)
 | succ : ∀ {n}, fin n → fin (n + 1)
 
+-- representa subconjuntos finitos e não vazios de ℕ
+-- fin 1 = {0}        zero 
+-- fin 2 = {0, 1}     zero, succ zero 
+-- fin 3 = {0, 1, 2}  zero, succ zero, succ (succ zero)
+-- fin 0 = ∅ ≃ ⊥ 
+
+/-
+def List.lookup {A}(xs : List A)(n : ℕ) : Option A := 
+  match xs, n with 
+  | [], _ => .none 
+  | x :: _, 0 => .some x 
+  | _ :: xs, n' + 1 => List.lookup xs n' 
+-/
+
+-- fin n = conjunto de posições endereçáveis em Vec A n
 
 def Vec.lookup {A n}(xs : Vec A n)(idx : fin n) : A := 
   match idx, xs with 
@@ -124,15 +169,22 @@ def Vec.lookup {A n}(xs : Vec A n)(idx : fin n) : A :=
   | fin.succ idx, Vec.cons _ xs => Vec.lookup xs idx
 
 -- another application: universe pattern 
+-- Tipo para códigos 
+-- Função de interpretação de códigos.
 
+-- códigos 
 inductive NatOrBool : Type where 
 | nat | bool 
 
+-- função de interpretação.
 abbrev NatOrBool.asType (code : NatOrBool) : Type := 
   match code with 
   | .nat => ℕ 
   | .bool => Bool 
 
+-- parser simples
+-- parser : String -> a 
+#check String.toNat?
 def decode (ty : NatOrBool)
            (input : String) : Option ty.asType :=
   match ty with 
@@ -144,6 +196,9 @@ def decode (ty : NatOrBool)
     | _ => .none
 
 #eval decode .nat "123"
+#eval decode .nat ""
+#eval decode .bool "12"
+#eval decode .bool "true"
 
 -- a universe for finite types 
 
@@ -152,10 +207,20 @@ inductive Finite : Type where
 | either : Finite → Finite → Finite 
 | pair   : Finite → Finite → Finite 
 
+
 abbrev Finite.asType : Finite → Type 
-| .unit => Unit 
+| .unit => Unit --  
 | .either t1 t2 => asType t1 ⊕ asType t2  
 | .pair t1 t2 => asType t1 × asType t2 
+
+-- Bool ≃ {True} ⊕ {False}
+-- {True} ≃ {•}
+-- {False} ≃ {•}
+-- {•} ⊕ {•} = {(•,L), (•, R)} 
+
+def fakeBool : Finite := .either .unit .unit 
+def fakeTrue : fakeBool.asType := Sum.inl Unit.unit 
+def fakeFalse : fakeBool.asType := Sum.inr Unit.unit
 
 def Finite.beq (t : Finite)(x y : t.asType) : Bool := 
   match t with 
@@ -167,6 +232,8 @@ def Finite.beq (t : Finite)(x y : t.asType) : Bool :=
     | _ , _ => false 
   | .pair t1 t2 => 
     beq t1 x.fst y.fst && beq t2 x.snd y.snd 
+
+#eval Finite.beq fakeBool fakeTrue fakeFalse 
 
 -- data universe 
 

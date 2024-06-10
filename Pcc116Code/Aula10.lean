@@ -1,182 +1,267 @@
--- Aula 10: Recursão geral 
+-- Aula 10: Metaprogramação e automação de provas  
 
-import Mathlib.Tactic.Basic
-import Mathlib.Tactic.Linarith 
-import Mathlib.Data.Nat.Defs
+import Mathlib.Tactic.Basic 
+import Mathlib.Data.Nat.Defs 
+import Aesop 
+import Lean.Elab.Tactic
 
--- definições parciais: uma maneira de contornar a 
--- exigência de totalidade
+-- tactic combinators
 
-partial def pdiv (n m : ℕ) : ℕ × ℕ := 
-  match Nat.decLt n m with 
-  | isTrue _ => (0, m)
-  | _           => 
-    match pdiv (n - m) m with
-    | (q,r) => (q + 1, r)
-
--- Lean não identifica a chamada a pdif (n - m) m 
--- como seguindo uma cadeia decrescente finita de 
--- chamadas. Como resolver esse dilema?
-
--- Estratégia 1. uso de fuel 
-
-def fuel_div_def (fuel : ℕ)(n m : ℕ) : Option (ℕ × ℕ) := 
-  match fuel with 
-  | 0 => .none 
-  | fuel' + 1 => 
-    match Nat.decLt n m with 
-    | isTrue _ => .some (0,m)
-    | _ => match fuel_div_def fuel' n m with 
-           | .none => .none 
-           | .some (q,r) => .some (q + 1, r)
-
-def fuel_div (n m : ℕ) : Option (ℕ × ℕ) := 
-  fuel_div_def n n m
-
--- Problemas:
--- 1. Necessidade de usar o tipo Option para garantir totalidade
---    quando não há combustível suficiente para executar 
---    chamadas recursivas.
--- 2. Presença de um parâmetro artificial, o fuel. 
-
--- Estratégia 2. uso de relações de ordem bem formadas 
-
--- Relações bem formadas 
-
-/-
-Primeiro, temos que lembrar o que é uma relação de ordem.
-
-Dizemos que R é uma relação de ordem se:
-
-- R é irreflexiva: ∀ x, ¬ R x x 
-- R é transitiva: ∀ x y z, R x y → R y z → R x z
-
-Dizemos que uma relação de ordem é bem formada se 
-todos os elementos desta relação são _alcançáveis_.
-
-Para entender o conceito de alcançabilidade, é 
-útil recordar sobre o princípio de indução forte. 
--/
-
-def strong_induction (P : ℕ → Prop) 
-  : (∀ m, (∀ k, k < m → P k) → P m) → ∀ n, P n  := by 
-  intros IH n  
-  have IH1 : ∀ p, p ≤ n → P p := by
-    induction n with 
-    | zero =>
-      intros p H 
-      cases H 
-      apply IH 
-      intros k Hk 
-      cases Hk 
-    | succ n' IHn' => 
-      intros p H 
-      apply IH
-      intros k Hk 
-      apply IHn' 
-      omega 
-  apply IH1 
-  apply Nat.le_refl
-
-/-
-Essencialmente, o uso de relações bem formadas é uma 
-generalização do princípio de indução forte para 
-tipos de dados quaisquer.
--/
-
---
--- Acessibilidade de uma relação de ordem 
-
--- inductive Acc {α : Sort u} (r : α → α → Prop) : α → Prop where
--- | intro (x : α) (h : (y : α) → r y x → Acc r y) : Acc r x
--- essencialmente, isso é o princípio de indução forte.
-
--- inductive WellFounded {α : Sort u} (r : α → α → Prop) : Prop where
--- | intro (h : ∀ a, Acc r a) : WellFounded r
-
-lemma div_rec {n m : ℕ} : 0 < m ∧ m ≤ n → n - m < n := by 
-  intros H1
-  omega 
-
--- aqui explicitamente realizamos a chamada recursiva 
--- sobre um argumento menor e provamos esse fato usando 
--- div_rec 
-
-def divF (n : ℕ)
-         (f : (n' : Nat) → n' < n → ℕ → ℕ) (m : ℕ) : ℕ :=
-  if h : 0 < m ∧ m ≤ n then
-    f (n - m) (div_rec h) m + 1
-  else
-    0
-
-def div1 n m := WellFounded.fix (measure id).wf divF n m
-
-#check div1
-
--- outra maneira, é termos no escopo da definição 
--- uma prova mostrando que o argumento é menor e, 
--- partir disso, o compilador do Lean é capaz de 
--- automatizar o processo de construção do uso 
--- WellFounded.fix 
-
-def div2 (n m : ℕ) : ℕ := 
-  if h : 0 < m ∧ m ≤ n then 
-    div2 (n - m) m + 1 
-  else 0
-
-lemma div2_def (n m : ℕ) 
-  : div2 n m = if 0 < m ∧ m ≤ n then 
-                  div2 (n - m) m + 1 else 0 := by 
-  show div2 n m = _ 
-  rw [div2]
-  rfl 
-
-lemma div_induction (P : ℕ → ℕ → Prop)
-  (n m : ℕ)
-  (IH : ∀ n m, 0 < m ∧ m ≤ n → P (n - m) m → P n m)
-  (base : ∀ n m, ¬ (0 < m ∧ m ≤ n) → P n m) : P n m := 
-  if h : 0 < m ∧ m ≤ n then 
-    IH n m h (div_induction P (n - m) m IH base)
-  else base n m h 
+inductive Even : ℕ → Prop where 
+| zero : Even 0
+| succ : ∀ {n}, Even n → Even (n + 2)
 
 
-theorem div2_correct 
-  : ∀ n m, ∃ q r, div2 n m = q ∧ n = m * q + r := by
-    intros n m 
-    induction n, m using div_induction with 
-    | IH n m H IH => 
-      rw [div2_def]
-      split
-      · 
-        simp at * 
-        rcases IH with ⟨ q, Heq ⟩ 
-        exists q
-        rw [ Nat.mul_add
-           , Nat.mul_one
-           , Nat.add_assoc _ m
-           , Nat.add_comm m q
-           , ← Nat.add_assoc _ q
-           , ← Heq
-           , ← Nat.sub_add_comm
-           , Nat.add_sub_cancel]
-        omega 
-      · 
-        contradiction
-    | base n m H =>
-      rw [div2_def]
-      exists 0
-      exists n
-      split 
-      contradiction 
-      simp
- 
--- Exercício: Defina uma função div3 que retorna o
--- quociente e o resto da divisão e prove a correção 
--- desta versão.
+-- repeat' and first combinators
 
--- Exercício: Desenvolva uma função que realiza a 
--- intercalação de duas listas previamente ordenadas e 
--- prove que esta função preserva a relação de ordenação
--- das listas fornecidas como argumento.
+lemma repeat'_example1 : Even 4 ∧ Even 10 ∧ Even 20 ∧ Even 50 := by 
+  repeat' apply And.intro
+  repeat' first 
+          | apply Even.succ 
+          | apply Even.zero
+
+-- constructor: use a constructor of an inductive type.
+-- If more than one is possible, the choice follows textual order. 
+
+lemma repeat'_example2 : Even 4 ∧ Even 10 ∧ Even 20 ∧ Even 50 := by 
+  repeat' apply And.intro 
+  repeat' constructor 
+
+-- all_goals: apply a tactic in all goals generated.
+
+lemma repeat'_example3 : Even 4 ∧ Even 10 ∧ Even 20 ∧ Even 50 := by 
+  repeat' apply And.intro 
+  all_goals repeat' constructor
+
+-- simple custom tactic defined by a macro 
+
+macro "intro_and_even" : tactic => 
+  `(tactic| 
+     (repeat' apply And.intro 
+      any_goals 
+        solve 
+        | repeat' 
+           first 
+            | apply Even.succ 
+            | apply Even.zero))
+
+lemma repeat'_example4 : Even 4 ∧ Even 10 ∧ Even 20 ∧ Even 50 := by
+  intro_and_even 
+
+-- Metaprogramming monads
+-- 
+-- Lean supports two different monads for metaprogramming: 
+-- 
+-- MetaM monad supports: 
+-- * it is a state monad providing access to the global context
+-- notations and attributes.
+-- * it is a option monad, since some its computations may fail.
+-- * supports logging using logInfo function
+
+-- TacticM monad extends MetaM with functionalities to work with 
+-- goals. 
 
 
+-- Example: using logging to display some info. 
+
+open Lean Elab Tactic Meta
+
+elab "trace_goals" : tactic => 
+  do 
+    logInfo m!"Lean version {Lean.versionString}"
+    logInfo "All goals"
+    let goals ← getUnsolvedGoals
+    logInfo m!"{goals}"
+    match goals with 
+    | [] => return 
+    | _ :: _ => 
+      logInfo "First goal's target:"
+      let target ← getMainTarget
+      logInfo m!"{target}"
+
+
+lemma even_example5 : Even 30 ∧ Even 16 := by 
+  apply And.intro 
+  trace_goals 
+  intro_and_even 
+
+-- Example: hypothesis tactic 
+
+elab "hypothesis" : tactic =>
+  -- ensure the focus on the current goal 
+  withMainContext (
+    do 
+      -- get current goal 
+      let target ← getMainTarget
+      -- get current local context 
+      let lctx ← getLCtx
+      for ldecl in lctx do 
+        -- implementation detail: hypothesis inserted by Lean. 
+        if ! LocalDecl.isImplementationDetail ldecl then 
+           -- test equality up to computation 
+           let eq ← isDefEq (LocalDecl.type ldecl) target 
+           if eq then 
+              let goal ← getMainGoal
+              -- instantiate the goal with current hypothesis
+              MVarId.assign goal (LocalDecl.toExpr ldecl)
+              return
+      failure)
+
+lemma even_hyp (h : Even 100) : Even 100 := by 
+  hypothesis
+
+-- example: creating a DSL using metaprogramming
+
+-- literals 
+
+inductive Lit : Type
+| INat : ℕ → Lit 
+| IBool : Bool → Lit 
+
+-- operators 
+
+inductive Unop : Type 
+| Unot : Unop
+
+inductive Binop : Type 
+| BPlus : Binop 
+| BAnd  : Binop 
+| BLess : Binop 
+
+-- expressions 
+
+inductive IExp : Type 
+| ELit : Lit → IExp 
+| EVar : String → IExp 
+| EUn : Unop → IExp → IExp 
+| BOp : Binop → IExp → IExp → IExp 
+
+-- programs 
+
+inductive Stmt : Type 
+| Skip : Stmt 
+| Assign : String → IExp → Stmt 
+| Seq : Stmt → Stmt → Stmt 
+| If : IExp → Stmt → Stmt → Stmt 
+| While : IExp → Stmt → Stmt 
+
+-- elaborating syntax using macros 
+
+declare_syntax_cat imp_lit
+
+syntax num : imp_lit
+syntax "true" : imp_lit
+syntax "false" : imp_lit
+
+def elabLit : Syntax → MetaM Expr 
+| `(imp_lit| $n:num) => mkAppM ``Lit.INat #[mkNatLit n.getNat]
+| `(imp_lit| true) => mkAppM ``Lit.IBool #[.const ``Bool.true []]
+| `(imp_lit| false) => mkAppM ``Lit.IBool #[.const ``Bool.false []]
+| _ => throwUnsupportedSyntax
+
+elab "test_elabLit" l:imp_lit : term => elabLit l
+
+#reduce test_elabLit 3 
+#reduce test_elabLit true 
+
+declare_syntax_cat imp_unop
+
+syntax "not" : imp_unop 
+
+def elabUnop : Syntax → MetaM Expr 
+| `(imp_unop| not) => return .const ``Unop.Unot []
+| _ => throwUnsupportedSyntax
+
+declare_syntax_cat imp_bin_op 
+
+syntax "+" : imp_bin_op
+syntax "and" : imp_bin_op
+syntax "<" : imp_bin_op
+
+def elabBinop : Syntax → MetaM Expr 
+| `(imp_bin_op| +) => return .const ``Binop.BPlus []
+| `(imp_bin_op| and) => return .const ``Binop.BAnd []
+| `(imp_bin_op| <) => return .const ``Binop.BLess []
+| _ => throwUnsupportedSyntax
+
+-- elaborating expressions 
+
+declare_syntax_cat imp_exp 
+
+syntax imp_lit : imp_exp 
+syntax ident : imp_exp 
+syntax imp_unop imp_exp : imp_exp 
+syntax imp_exp imp_bin_op imp_exp : imp_exp 
+
+syntax "(" imp_exp ")" : imp_exp 
+
+partial def elabExp : Syntax → MetaM Expr 
+| `(imp_exp| $l:imp_lit) => do 
+  let l ← elabLit l 
+  mkAppM ``IExp.ELit #[l] 
+| `(imp_exp| $i:ident) => 
+  mkAppM ``IExp.EVar #[mkStrLit i.getId.toString]
+| `(imp_exp| $b:imp_unop $e:imp_exp) => do 
+  let b ← elabUnop b 
+  let e ← elabExp e 
+  mkAppM ``IExp.EUn #[b,e]
+| `(imp_exp| $l:imp_exp $b:imp_bin_op $r:imp_exp) => do 
+  let l ← elabExp l 
+  let b ← elabBinop b 
+  let r ← elabExp r 
+  mkAppM ``IExp.BOp #[b, l, r]
+| `(imp_exp| ($e:imp_exp)) => 
+  elabExp e
+| _ => throwUnsupportedSyntax 
+
+elab "test_elabExp" e:imp_exp : term => elabExp e 
+
+#reduce test_elabExp a + 3
+
+-- statements 
+
+declare_syntax_cat imp_stmt 
+
+syntax "skip" : imp_stmt 
+syntax ident ":=" imp_exp : imp_stmt 
+syntax imp_stmt ";;" imp_stmt : imp_stmt 
+syntax "if" imp_exp "then" imp_stmt "else" imp_stmt "fi" : imp_stmt 
+syntax "while" imp_exp "do" imp_stmt "od" : imp_stmt 
+
+partial def elabStmt : Syntax → MetaM Expr 
+| `(imp_stmt| skip) => return .const ``Stmt.Skip []
+| `(imp_stmt| $i:ident := $e:imp_exp) => do 
+  let i : Expr := mkStrLit i.getId.toString
+  let e ← elabExp e 
+  mkAppM ``Stmt.Assign #[i, e]
+| `(imp_stmt| $s1:imp_stmt ;; $s2:imp_stmt) => do 
+  let s1 ← elabStmt s1 
+  let s2 ← elabStmt s2 
+  mkAppM ``Stmt.Seq #[s1, s2]
+| `(imp_stmt| if $e:imp_exp then $s1:imp_stmt else $s2:imp_stmt fi) => do 
+  let e ← elabExp e 
+  let s1 ← elabStmt s1 
+  let s2 ← elabStmt s2 
+  mkAppM ``Stmt.If #[e,s1,s2]
+| `(imp_stmt| while $e:imp_exp do $s:imp_stmt od) => do 
+  let e ← elabExp e 
+  let s ← elabStmt s 
+  mkAppM ``Stmt.While #[e, s]
+| _ => throwUnsupportedSyntax
+
+elab "{imp|" p: imp_stmt "}" : term => elabStmt p
+
+#reduce {imp|
+  a := 5 ;; 
+  if a < 3 and a < 1 then 
+    c := 5
+  else 
+    skip 
+  fi ;;  
+  d := c + 3  
+}
+
+-- Exercício: Represente a linguagem de 
+-- comandos simples apresentada na aula 09 
+-- utilizando macros para construção automática
+-- de programas desta linguagem.

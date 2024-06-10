@@ -1,246 +1,182 @@
--- Aula 11: representando semântica formal. 
+-- Aula 11: Recursão geral 
 
-import Mathlib.Tactic.Basic 
-import Mathlib.Data.Nat.Defs 
+import Mathlib.Tactic.Basic
+import Mathlib.Tactic.Linarith 
+import Mathlib.Data.Nat.Defs
+
+-- definições parciais: uma maneira de contornar a 
+-- exigência de totalidade
+
+partial def pdiv (n m : ℕ) : ℕ × ℕ := 
+  match Nat.decLt n m with 
+  | isTrue _ => (0, m)
+  | _           => 
+    match pdiv (n - m) m with
+    | (q,r) => (q + 1, r)
+
+-- Lean não identifica a chamada a pdif (n - m) m 
+-- como seguindo uma cadeia decrescente finita de 
+-- chamadas. Como resolver esse dilema?
+
+-- Estratégia 1. uso de fuel 
+
+def fuel_div_def (fuel : ℕ)(n m : ℕ) : Option (ℕ × ℕ) := 
+  match fuel with 
+  | 0 => .none 
+  | fuel' + 1 => 
+    match Nat.decLt n m with 
+    | isTrue _ => .some (0,m)
+    | _ => match fuel_div_def fuel' n m with 
+           | .none => .none 
+           | .some (q,r) => .some (q + 1, r)
+
+def fuel_div (n m : ℕ) : Option (ℕ × ℕ) := 
+  fuel_div_def n n m
+
+-- Problemas:
+-- 1. Necessidade de usar o tipo Option para garantir totalidade
+--    quando não há combustível suficiente para executar 
+--    chamadas recursivas.
+-- 2. Presença de um parâmetro artificial, o fuel. 
+
+-- Estratégia 2. uso de relações de ordem bem formadas 
+
+-- Relações bem formadas 
+
+/-
+Primeiro, temos que lembrar o que é uma relação de ordem.
+
+Dizemos que R é uma relação de ordem se:
+
+- R é irreflexiva: ∀ x, ¬ R x x 
+- R é transitiva: ∀ x y z, R x y → R y z → R x z
+
+Dizemos que uma relação de ordem é bem formada se 
+todos os elementos desta relação são _alcançáveis_.
+
+Para entender o conceito de alcançabilidade, é 
+útil recordar sobre o princípio de indução forte. 
+-/
+
+def strong_induction (P : ℕ → Prop) 
+  : (∀ m, (∀ k, k < m → P k) → P m) → ∀ n, P n  := by 
+  intros IH n  
+  have IH1 : ∀ p, p ≤ n → P p := by
+    induction n with 
+    | zero =>
+      intros p H 
+      cases H 
+      apply IH 
+      intros k Hk 
+      cases Hk 
+    | succ n' IHn' => 
+      intros p H 
+      apply IH
+      intros k Hk 
+      apply IHn' 
+      omega 
+  apply IH1 
+  apply Nat.le_refl
+
+/-
+Essencialmente, o uso de relações bem formadas é uma 
+generalização do princípio de indução forte para 
+tipos de dados quaisquer.
+-/
+
+--
+-- Acessibilidade de uma relação de ordem 
+
+-- inductive Acc {α : Sort u} (r : α → α → Prop) : α → Prop where
+-- | intro (x : α) (h : (y : α) → r y x → Acc r y) : Acc r x
+-- essencialmente, isso é o princípio de indução forte.
+
+-- inductive WellFounded {α : Sort u} (r : α → α → Prop) : Prop where
+-- | intro (h : ∀ a, Acc r a) : WellFounded r
+
+lemma div_rec {n m : ℕ} : 0 < m ∧ m ≤ n → n - m < n := by 
+  intros H1
+  omega 
+
+-- aqui explicitamente realizamos a chamada recursiva 
+-- sobre um argumento menor e provamos esse fato usando 
+-- div_rec 
+
+def divF (n : ℕ)
+         (f : (n' : Nat) → n' < n → ℕ → ℕ) (m : ℕ) : ℕ :=
+  if h : 0 < m ∧ m ≤ n then
+    f (n - m) (div_rec h) m + 1
+  else
+    0
+
+def div1 n m := WellFounded.fix (measure id).wf divF n m
+
+#check div1
+
+-- outra maneira, é termos no escopo da definição 
+-- uma prova mostrando que o argumento é menor e, 
+-- partir disso, o compilador do Lean é capaz de 
+-- automatizar o processo de construção do uso 
+-- WellFounded.fix 
+
+def div2 (n m : ℕ) : ℕ := 
+  if h : 0 < m ∧ m ≤ n then 
+    div2 (n - m) m + 1 
+  else 0
+
+lemma div2_def (n m : ℕ) 
+  : div2 n m = if 0 < m ∧ m ≤ n then 
+                  div2 (n - m) m + 1 else 0 := by 
+  show div2 n m = _ 
+  rw [div2]
+  rfl 
+
+lemma div_induction (P : ℕ → ℕ → Prop)
+  (n m : ℕ)
+  (IH : ∀ n m, 0 < m ∧ m ≤ n → P (n - m) m → P n m)
+  (base : ∀ n m, ¬ (0 < m ∧ m ≤ n) → P n m) : P n m := 
+  if h : 0 < m ∧ m ≤ n then 
+    IH n m h (div_induction P (n - m) m IH base)
+  else base n m h 
 
 
-section TOY 
-
-  -- sintaxe de uma linguagem de expressões (sem tipos)
-  
-  inductive Tm : Type where 
-  | C : ℕ → Tm 
-  | P : Tm → Tm → Tm 
-
-  -- semântica denotacional 
-
-  @[simp] 
-  def evalTm (t : Tm) : ℕ := 
-    match t with 
-    | Tm.C n => n 
-    | Tm.P t1 t2 => evalTm t1 + evalTm t2 
-
-  -- semântica big-step 
-
-  inductive TmValue : Tm → Prop where 
-  | Tm_Val : ∀ {n}, TmValue (Tm.C n)
-
-  inductive Eval : Tm → ℕ → Prop where 
-  | Ev_Const : ∀ {n}, Eval (Tm.C n) n 
-  | Ev_Plus : ∀ {t1 n1 t2 n2}, 
-                Eval t1 n1 → 
-                Eval t2 n2 → 
-                Eval (Tm.P t1 t)
-                     (n1 + n2)
-
-
-  lemma Eval_eval (t : Tm) : Eval t (evalTm t) := by 
-    induction t with 
-    | C n => 
-      simp ; constructor    
-    | P t1 t2 IH1 IH2 => 
-      simp 
-      constructor
+theorem div2_correct 
+  : ∀ n m, ∃ q r, div2 n m = q ∧ n = m * q + r := by
+    intros n m 
+    induction n, m using div_induction with 
+    | IH n m H IH => 
+      rw [div2_def]
+      split
       · 
-        exact IH1 
+        simp at * 
+        rcases IH with ⟨ q, Heq ⟩ 
+        exists q
+        rw [ Nat.mul_add
+           , Nat.mul_one
+           , Nat.add_assoc _ m
+           , Nat.add_comm m q
+           , ← Nat.add_assoc _ q
+           , ← Heq
+           , ← Nat.sub_add_comm
+           , Nat.add_sub_cancel]
+        omega 
       · 
-        exact IH2 
+        contradiction
+    | base n m H =>
+      rw [div2_def]
+      exists 0
+      exists n
+      split 
+      contradiction 
+      simp
+ 
+-- Exercício: Defina uma função div3 que retorna o
+-- quociente e o resto da divisão e prove a correção 
+-- desta versão.
 
-  -- semântica small step 
+-- Exercício: Desenvolva uma função que realiza a 
+-- intercalação de duas listas previamente ordenadas e 
+-- prove que esta função preserva a relação de ordenação
+-- das listas fornecidas como argumento.
 
-  inductive Step : Tm → Tm → Prop where 
-  | SPlusConst : ∀ n1 n2, Step (Tm.P (Tm.C n1) (Tm.C n2)) 
-                               (Tm.C (n1 + n2))
-  | SPlus1 : ∀ t1 t1' t2, Step t1 t1' → 
-                          Step (Tm.P t1 t2) (Tm.P t1' t2)
-  | SPlus2 : ∀ n1 t2 t2', Step t2 t2' → 
-                          Step (Tm.P (Tm.C n1) t2)
-                               (Tm.P (Tm.C n1) t2')
 
-  lemma Step_deterministic (t1 t2 t3 : Tm) 
-    : Step t1 t2 → Step t1 t3 → t2 = t3 := by 
-    intros Ht1 
-    induction Ht1 generalizing t3 with 
-    | SPlusConst n1 n2 => 
-      intros H1 
-      cases H1 with 
-      | SPlusConst => rfl 
-      | SPlus1 t3 t4 t5 H1 => 
-        cases H1 
-      | SPlus2 n4 t5 t5' H2 => 
-        cases H2  
-    | SPlus1 t4 t5 t6 H1 IH1 => 
-      intros H2
-      cases H2 with 
-      | SPlusConst n1 n2 => 
-        rcases H1 
-      | SPlus1 t7 t8 H1 IH2 => 
-        have H3 : t5 = t8 := by 
-          apply IH1 ; assumption 
-        simp [*]
-      | SPlus2 t7 t8 H2 IH1 => 
-        rcases H1
-    | SPlus2 t7 t8 t9 H2 IH2 => 
-      intros H3 
-      cases H3 with 
-      | SPlusConst n1 n2 => 
-        rcases H2 
-      | SPlus1 n2 t7 H2 H3 => 
-        rcases H3
-      | SPlus2 t4 t5 H3 H4 => 
-        simp
-        apply IH2 ; assumption 
-
-  -- Exercício
-
-  theorem strong_progress (t : Tm) : TmValue t ∨ ∃ t', Step t t' := 
-    sorry 
-
-end TOY 
-
-section ARITH 
-  
-  inductive Exp where 
-  | True : Exp 
-  | False : Exp 
-  | Zero : Exp 
-  | Succ : Exp → Exp 
-  | Pred : Exp → Exp 
-  | IsZero : Exp → Exp 
-  | If : Exp → Exp → Exp → Exp 
-
-  -- small step semantics 
-
-  inductive BoolVal : Exp → Prop where 
-  | ValTrue : BoolVal Exp.True 
-  | ValFalse : BoolVal Exp.False  
-
-  inductive NatVal : Exp → Prop where 
-  | ValZero : NatVal Exp.Zero 
-  | ValSucc : ∀ {n}, NatVal n → NatVal (Exp.Succ n)
-
-  abbrev ExpVal (e : Exp) := BoolVal e ∨ NatVal e 
-
-  inductive EStep : Exp → Exp → Prop where 
-  | EPredZ : EStep (Exp.Pred Exp.Zero) Exp.Zero 
-  | EPredS : ∀ n, NatVal n → 
-                  EStep (Exp.Pred (Exp.Succ n)) 
-                        n 
-  | EIsZeroZ : EStep (Exp.IsZero Exp.Zero) Exp.True 
-  | EIsZeroS : ∀ n, NatVal n → 
-                    EStep (Exp.IsZero (Exp.Succ n))
-                          Exp.False 
-  | EIfT : ∀ t1 t2, EStep (Exp.If Exp.True t1 t2)
-                          t1 
-  | EIfF : ∀ t1 t2, EStep (Exp.If Exp.False t1 t2)
-                          t2 
-  | ESucc : ∀ t1 t1', EStep t1 t1' → 
-                      EStep (Exp.Succ t1) (Exp.Succ t1')
-  | EPred : ∀ t1 t1', EStep t1 t1' → 
-                      EStep (Exp.Pred t1) (Exp.Pred t1')
-  | EIsZero : ∀ t1 t1', EStep t1 t1' → 
-                        EStep (Exp.IsZero t1) 
-                              (Exp.IsZero t1')
-  | EIf : ∀ t1 t1' t2 t3, EStep t1 t1' → 
-                          EStep (Exp.If t1 t2 t3)
-                                (Exp.If t1' t2 t3)
-
-  -- Exercício 
-
-  theorem EStep_deterministic (e1 e2 e3 : Exp)
-    : EStep e1 e2 → EStep e1 e3 → e2 = e3 := sorry 
-
-  -- type system 
-
-  inductive Ty where 
-  | nat | bool 
-
-  inductive EType : Exp → Ty → Prop where 
-  | TZero : EType Exp.Zero Ty.nat 
-  | TSucc : ∀ e, EType e Ty.nat → EType (Exp.Succ e) Ty.nat 
-  | TTrue : EType Exp.True Ty.bool 
-  | TFalse : EType Exp.False Ty.bool 
-  | TPred : ∀ e, EType e Ty.nat → EType (Exp.Pred e) Ty.nat 
-  | TIsZero : ∀ e, EType e Ty.nat → EType (Exp.IsZero e) Ty.bool
-  | TIf : ∀ e1 e2 e3 t, EType e1 Ty.bool → 
-                        EType e2 t → 
-                        EType e3 t → 
-                        EType (Exp.If e1 e2 e3) t
-
-  -- Exercício
-
-  theorem EType_deterministic (e1 : Exp)(t1 t2 : Ty) 
-    : EType e1 t1 → EType e1 t2 → t1 = t2 := sorry 
-
-  theorem Epreservation (e e' : Exp)(t : Ty) 
-    : EType e t → EStep e e' → EType e' t := by 
-    induction e generalizing e' t with 
-    | True => 
-      intros _H1 H2 
-      cases H2 
-    | False => 
-      intros _H1 H2 
-      cases H2 
-    | Zero => 
-      intros _H1 H2 
-      cases H2 
-    | Succ e1 IH1 =>
-      intros H1 H2 
-      cases H2 
-      case ESucc e2 H2 => 
-      cases H1 
-      constructor 
-      apply IH1 <;> assumption 
-    | Pred e1 IH1 =>
-      intros H1 H2 
-      cases H2 
-      case EPredZ => 
-        cases H1 
-        case TPred H => 
-          constructor 
-      case EPredS n => 
-        cases H1 
-        case TPred H => 
-          cases H ; assumption 
-      case EPred e2 H2 => 
-        cases H1 
-        case TPred => 
-          constructor 
-          apply IH1 <;> assumption
-    | IsZero e1 IH1 =>
-      intros H1 H2 
-      cases H2 
-      case EIsZeroZ => 
-        cases H1 
-        constructor
-      case EIsZeroS n H => 
-        cases H1 
-        constructor 
-      case EIsZero e2 H2 => 
-        cases H1 
-        case TIsZero H3 =>
-          constructor 
-          apply IH1 <;> assumption
-    | If e1 e2 e3 IH1 _IH2 _IH3 =>
-      intros H1 H2 
-      cases H2 
-      case EIfT => 
-        cases H1 
-        case TIf H3 H4 H5 => 
-          assumption 
-      case EIfF => 
-        cases H1 
-        case TIf H3 H4 H5 => 
-          assumption 
-      case EIf e4 H4 => 
-        cases H1 
-        case TIf H1 H2 H3 => 
-          constructor <;> try assumption 
-          apply IH1 <;> assumption 
-
-  -- Exercício
-
-  theorem progress e t : EType e t → ExpVal e ∨ ∃ e', EStep e e' := 
-    sorry 
-
-end ARITH 

@@ -13,6 +13,7 @@ inductive Even : ℕ → Prop where
 
 
 -- repeat' and first combinators
+-- repeat' t  
 
 lemma repeat'_example1 : Even 4 ∧ Even 10 ∧ Even 20 ∧ Even 50 := by 
   repeat' apply And.intro
@@ -31,7 +32,7 @@ lemma repeat'_example2 : Even 4 ∧ Even 10 ∧ Even 20 ∧ Even 50 := by
 
 lemma repeat'_example3 : Even 4 ∧ Even 10 ∧ Even 20 ∧ Even 50 := by 
   repeat' apply And.intro 
-  all_goals repeat' constructor
+  all_goals (repeat' constructor)
 
 -- simple custom tactic defined by a macro 
 

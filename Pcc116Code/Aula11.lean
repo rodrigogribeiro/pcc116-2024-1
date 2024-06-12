@@ -4,12 +4,19 @@ import Mathlib.Tactic.Basic
 import Mathlib.Tactic.Linarith 
 import Mathlib.Data.Nat.Defs
 
+-- ∀ {e}, ∃ r, f e = r
+-- funções devem ser totais
+-- * Recursão estrutural.
+-- * Casamento de padrão exaustivo. 
+
 -- definições parciais: uma maneira de contornar a 
 -- exigência de totalidade
 
+-- n ÷ m = (q,r) tal que n = m × q + r ∧ r < m  
+
 partial def pdiv (n m : ℕ) : ℕ × ℕ := 
   match Nat.decLt n m with 
-  | isTrue _ => (0, m)
+  | isTrue _ => (0, n)
   | _           => 
     match pdiv (n - m) m with
     | (q,r) => (q + 1, r)
@@ -18,15 +25,81 @@ partial def pdiv (n m : ℕ) : ℕ × ℕ :=
 -- como seguindo uma cadeia decrescente finita de 
 -- chamadas. Como resolver esse dilema?
 
--- Estratégia 1. uso de fuel 
+-- Estratégia 1. uso de fuel
+-- dois componentes:
+-- * Contador de chamadas recursivas passado como argumento. 
+-- * Resultado da forma Option A, em que A é o tipo do resultado. 
+-- ** fuel = 0, resultado .none 
+-- ** fuel ≠ 0, calcule o resultado fazendo chamada recursiva sobre fuel - 1
+/-
+inductive Decidable (P : Prop) : Type where 
+| isTrue : P → Decidable P
+| isFalse : ¬ P → Decidable P 
+
+inductive Lt : ℕ → ℕ → Prop where 
+| base : ∀ {m}, Lt 0 (m + 1)
+| step : ∀ {n m}, Lt n m → Lt (n + 1) (m + 1)
+
+
+
+def blt (n m : ℕ) : Bool := ... 
+
+blt n m = true ∨  blt n m = false 
+
+def decLt (n m : ℕ) : Decidable (Lt n m) := ...
+
+if n < m then (0, n) else let (q,r) := div (n - m) m in (q + 1, r)
+-/
+
+inductive Lt : ℕ → ℕ → Prop where 
+| base : ∀ {m}, Lt 0 (m + 1)
+| step : ∀ {n m}, Lt n m → Lt (n + 1) (m + 1)
+
+def blt (n m : ℕ) : Bool := 
+  match n, m with 
+  | 0, _ + 1 => true
+  | 0, 0 => false 
+  | _ + 1, 0 => false 
+  | n + 1, m + 1 => blt n m
+
+def ltDec (n m : ℕ) : Decidable (Lt n m) := 
+  match n, m with 
+  | 0, 0 => by 
+      apply Decidable.isFalse 
+      intros H 
+      cases H 
+  | 0, m + 1 => by 
+      apply Decidable.isTrue 
+      apply Lt.base 
+  | n + 1, 0 => by 
+    apply Decidable.isFalse 
+    intros H 
+    cases H 
+  | n + 1, m + 1 => by
+    have R : Decidable (Lt n m) := ltDec n m
+    cases R with 
+    | isFalse H => 
+      apply Decidable.isFalse 
+      intros H1 
+      cases H1  
+      contradiction
+    | isTrue H =>
+      apply Decidable.isTrue 
+      apply Lt.step 
+      exact H      
+
+lemma test : Lt 2 5 := by 
+  apply Lt.step 
+  apply Lt.step 
+  apply Lt.base 
 
 def fuel_div_def (fuel : ℕ)(n m : ℕ) : Option (ℕ × ℕ) := 
   match fuel with 
   | 0 => .none 
   | fuel' + 1 => 
     match Nat.decLt n m with 
-    | isTrue _ => .some (0,m)
-    | _ => match fuel_div_def fuel' n m with 
+    | isTrue _ => .some (0,n)
+    | _ => match fuel_div_def fuel' (n - m) m with 
            | .none => .none 
            | .some (q,r) => .some (q + 1, r)
 
@@ -43,6 +116,10 @@ def fuel_div (n m : ℕ) : Option (ℕ × ℕ) :=
 
 -- Relações bem formadas 
 
+-- Exemplo: < sobre ℕ
+-- * n > ... > 0
+-- < sobre ℤ não é bem formado.
+
 /-
 Primeiro, temos que lembrar o que é uma relação de ordem.
 
@@ -57,6 +134,8 @@ todos os elementos desta relação são _alcançáveis_.
 Para entender o conceito de alcançabilidade, é 
 útil recordar sobre o princípio de indução forte. 
 -/
+
+-- ∀ n, P n ≃ P 0 ∧ ∀ n, P n → P (n + 1)
 
 def strong_induction (P : ℕ → Prop) 
   : (∀ m, (∀ k, k < m → P k) → P m) → ∀ n, P n  := by 
@@ -96,7 +175,7 @@ tipos de dados quaisquer.
 
 lemma div_rec {n m : ℕ} : 0 < m ∧ m ≤ n → n - m < n := by 
   intros H1
-  omega 
+  omega -- Aritmética de Presburger
 
 -- aqui explicitamente realizamos a chamada recursiva 
 -- sobre um argumento menor e provamos esse fato usando 
@@ -169,7 +248,44 @@ theorem div2_correct
       split 
       contradiction 
       simp
- 
+
+-- 3. Uso de um predicado de domínio 
+-- Essa técnica consiste em definir um predicado que representa 
+-- o domínio da função e então definimos a função por recursão 
+-- sobre esse predicado.
+
+
+inductive DivDom : ℕ → ℕ → Type where 
+| Base1 : ∀ m, DivDom 0 (m + 1)
+| Base2 : ∀ n, DivDom (n + 1) 1
+| Step : ∀ {n m}, DivDom (n - m) m → DivDom n (m + 1) 
+
+def div3F {n m} : DivDom n m → ℕ 
+| DivDom.Base1 _ => 0 
+| DivDom.Base2 n => n + 1 
+| DivDom.Step Hrec => 
+  div3F Hrec + 1 
+
+-- tendo definido a função, o próximo passo é mostrar a totalidade do 
+-- predicado para o domínio.
+
+def divDom : ∀ (n m : ℕ), m ≠ 0 → DivDom n m
+| 0, 0, Heq => by 
+  simp at *
+| 0, m + 1, _Heq => DivDom.Base1 m 
+| n + 1, 1, _Heq => DivDom.Base2 n 
+| n + 1, (m + 1) + 1, _Heq => by 
+  apply DivDom.Step
+  apply divDom 
+  intros H 
+  rcases H 
+
+-- combinando a definição e totalidade do predicado 
+
+def div3 (n m : ℕ)(H : m ≠ 0) : ℕ := 
+  div3F (divDom n m H)
+
+
 -- Exercício: Defina uma função div3 que retorna o
 -- quociente e o resto da divisão e prove a correção 
 -- desta versão.

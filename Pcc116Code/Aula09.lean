@@ -191,18 +191,19 @@ def sum247Bind (xs : List ℕ) : Option ℕ :=
 def sum247Op (xs : List ℕ) : Option ℕ := 
   nth xs 1 >>= λ x2 => 
     nth xs 3 >>= λ x4 => 
-      nth xs 6 >>= λ x7 => pure (x2 + x4 + x7)
+      nth xs 6 >>= λ x7 => 
+      pure (x2 + x4 + x7)
 
--- definição usando do syntax sugar. 
+-- definição usando do syntax sugar. Do notation  
 
 def sum247Do (xs : List ℕ) : Option ℕ := 
   do 
-    let x2 ← nth xs 1 
-    let x4 ← nth xs 4 
+    let x2 ← nth xs 1 -- nth xs 1 >>= λ x2 => ...  
+    let x4 ← nth xs 3 
     let x7 ← nth xs 6 
-    .some (x2 + x4 + x7)
+    pure (x2 + x4 + x7)
 
-
+#eval sum247 (List.replicate 5 1)
 
 /-
 # Mônadas
@@ -269,9 +270,12 @@ inductive Expr : Type where
 | Add : Expr → Expr → Expr 
 deriving Repr 
 
+-- environment => Memória 
+
 def Env := List (String × ℕ)
 
 -- interpretação usando mônada Reader 
+#check List.lookup 
 
 def evalR : Expr → Reader Env ℕ 
 | Expr.Var s => do 

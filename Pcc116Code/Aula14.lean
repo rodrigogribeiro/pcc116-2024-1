@@ -1,7 +1,6 @@
 -- Aula 14: Formalizando compiladores / semântica de linguagens imperativas
 
 import Mathlib.Data.Nat.Defs
-import Mathlib.Data.Finmap
 import Aesop 
 
 -- definição de uma linguagem de expressões 
@@ -68,6 +67,8 @@ lemma interp_app
       induction c <;> aesop 
 
 -- Lemma 2. Provando o resultado para uma pilha qualquer.
+
+-- Exercício: prove compile_preserves' e interp_app sem o uso de aesop 
 
 lemma compile_preserves' 
   : ∀ e stk, interp (compile e) stk = (eval e) :: stk := by 
@@ -220,6 +221,29 @@ lemma envAgreeCtxNil : ∀ ctx, envAgreeCtx [] ctx = true → ctx = [] := by
   | cons p ps => 
     simp at * 
 
+lemma envAgreeCtxCons 
+  : ∀ ctx env s s' v t, envAgreeCtx ((s, v) :: env) ((s', t) :: ctx) = true → 
+    envAgreeCtx env ctx = true ∧ s = s' ∧ tcLit v = t := by 
+  intros ctx env s s' v t H 
+  simp at * 
+  rcases H with ⟨ ⟨H1, H2⟩, H3 ⟩
+  rcases v with n | b 
+  · 
+    simp at * 
+    rcases t with _ | _ <;> aesop
+  · 
+    simp at * 
+    rcases t with _ | _ <;> aesop
+
+
+lemma lookupNeq {A : Type}(xs : List (String × A)) 
+                s s' v' v : s ≠ s' → 
+                     lookup s ((s', v') :: xs) = .some v  → 
+                     lookup s xs = .some v := by 
+    intros H1 H2 
+    rw [lookup] at H2 
+    aesop 
+
 lemma lookupSound : ∀ env ctx s t, envAgreeCtx env ctx →  
                                    lookup s ctx = .some t → 
                                    ∃ v, lookup s env = .some v ∧ 
@@ -228,13 +252,47 @@ lemma lookupSound : ∀ env ctx s t, envAgreeCtx env ctx →
     induction env with 
     | nil => 
       intros ctx s t H1 H2
-      apply envAgreeCtxNil at H1 
-      rw [H1] at H2
+      have H3 : ctx = [] := by 
+        apply envAgreeCtxNil 
+        assumption 
+      rw [H3] at H2
       simp at *
     | cons p env' IH => 
-      intros ctx s t H1 H2 
       rcases p with ⟨ s1 , v1 ⟩ 
-      sorry 
+      intros ctx s t H1 H2
+      cases ctx with 
+      | nil => 
+        simp at *
+      | cons p1 ctx' =>
+        rcases p1 with ⟨ s2 , t2 ⟩
+        have H3 : envAgreeCtx env' ctx' = true ∧ s1 = s2 ∧ tcLit v1 = t2 := by 
+          apply envAgreeCtxCons ; assumption
+        rcases H3 with ⟨ H11 , H12 , H13 ⟩ 
+        rcases decEq s s2 with eq | eq
+        · 
+          have H3 : lookup s ctx' = some t := by 
+            apply lookupNeq <;> assumption
+          have H4 : ∃ v, lookup s env' = some v ∧ tcLit v = t := by  
+            apply IH <;> assumption
+          rcases H4 with ⟨ v2 , H5 , H6 ⟩ 
+          exists v2 
+          rw [lookup] 
+          aesop
+        · 
+          aesop
+
+lemma tyLitNatSound l 
+  : tcLit l = Ty.TNat → ∃ n, l = Literal.LNat n := by 
+  intros H 
+  rcases l with n | b <;> simp at * 
+
+lemma tyLitBoolSound l 
+  : tcLit l = Ty.TBool → ∃ b, l = Literal.LBool b := by 
+  intros H 
+  rcases l with n | b <;> simp at * 
+  
+
+-- Exercicio: finalizar a prova.
 
 lemma tyExpSound : ∀ e ctx env t, tcExp ctx e = .some t → 
                                   envAgreeCtx env ctx → 
@@ -246,10 +304,32 @@ lemma tyExpSound : ∀ e ctx env t, tcExp ctx e = .some t →
     exists l 
     aesop 
   | Var v =>
+    intros ctx env t H1 H2
+    have H3 : ∃ l, lookup v env = .some l ∧ tcLit l = t := by 
+      apply lookupSound <;> assumption 
+    aesop 
+  | Add e1 e2 IH1 IH2 => 
     intros ctx env t H1 H2 
-    simp at * 
-    sorry 
-  | Add e1 e2 IH1 IH2 => sorry 
+    simp at H1 
+    rcases H1 with ⟨ t1, Ht1, t2, Ht2, Hm ⟩ 
+    cases t1 <;> cases t2 <;> simp at Hm 
+    rw [← Hm]
+    have H3 : ∃ l1, evalExp env e1 = Res.Ok l1 ∧ tcLit l1 = Ty.TNat := by 
+      apply IH1 <;> assumption 
+    have H4 : ∃ l2, evalExp env e2 = Res.Ok l2 ∧ tcLit l2 = Ty.TNat := by 
+      apply IH2 <;> assumption  
+    rcases H3 with ⟨ l1 , H31, H32 ⟩ 
+    rcases H4 with ⟨ l2 , H41, H42 ⟩ 
+    rcases l1 with n1 | b1 
+    · 
+      rcases l2 with n2 | b2 
+      · 
+        exists (Literal.LNat (n1 + n2))
+        aesop 
+      · 
+        aesop
+    · 
+      aesop 
   | And e1 e2 IH1 IH2 => sorry 
   | Lt e1 e2 IH1 IH2 => sorry 
 

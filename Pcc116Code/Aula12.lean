@@ -30,7 +30,7 @@ section TOY
   | Ev_Plus : ∀ {t1 n1 t2 n2}, 
                 Eval t1 n1 → 
                 Eval t2 n2 → 
-                Eval (Tm.P t1 t)
+                Eval (Tm.P t1 t2)
                      (n1 + n2)
 
 
@@ -40,11 +40,7 @@ section TOY
       simp ; constructor    
     | P t1 t2 IH1 IH2 => 
       simp 
-      constructor
-      · 
-        exact IH1 
-      · 
-        exact IH2 
+      constructor <;> assumption
 
   -- semântica small step 
 
@@ -117,7 +113,7 @@ section ARITH
 
   inductive NatVal : Exp → Prop where 
   | ValZero : NatVal Exp.Zero 
-  | ValSucc : ∀ {n}, NatVal n → NatVal (Exp.Succ n)
+  | ValSucc : ∀ n, NatVal n → NatVal (Exp.Succ n)
 
   abbrev ExpVal (e : Exp) := BoolVal e ∨ NatVal e 
 
@@ -147,8 +143,48 @@ section ARITH
 
   -- Exercício 
 
+  lemma NatValDontStep : ∀ (n : Exp), NatVal n → ¬ ∃ e, EStep n e := by 
+    intros n H
+    induction H with 
+    | ValZero => 
+      intros H2 
+      rcases H2 with ⟨ x , H2 ⟩ 
+      rcases H2 
+    | ValSucc n Hn IH => 
+      intros H2 
+      rcases H2 with ⟨ e, H2 ⟩ 
+      cases H2 with 
+      | ESucc e2 e3 H => 
+        apply IH
+        exists e3 
+
   theorem EStep_deterministic (e1 e2 e3 : Exp)
-    : EStep e1 e2 → EStep e1 e3 → e2 = e3 := sorry 
+    : EStep e1 e2 → EStep e1 e3 → e2 = e3 := sorry  
+    -- intros H1 
+    -- induction H1 generalizing e3 with 
+    -- | EPredZ => 
+    --   intros H2 
+    --   cases H2 with 
+    --   | EPredZ => rfl
+    --   | EPred en1 en2 H => 
+    --     cases H 
+    -- | EPredS n Hn => 
+    --   intros H2 
+    --   cases H2 with 
+    --   | EPredS m Hm => rfl 
+    --   | EPred en1 en2 H => 
+    --     cases H with 
+    --     | ESucc e4 e5 H3 => 
+    --       have H4 : ¬ ∃ e, EStep n e := by 
+    --         apply NatValDontStep 
+    --         assumption 
+    --       have H5 : ∃ e, EStep n e := by 
+    --         exists e5 
+    --       contradiction
+    -- | EIsZeroZ => sorry 
+    -- | EIsZeroS => sorry 
+    -- 
+  
 
   -- type system 
 
@@ -170,7 +206,16 @@ section ARITH
   -- Exercício
 
   theorem EType_deterministic (e1 : Exp)(t1 t2 : Ty) 
-    : EType e1 t1 → EType e1 t2 → t1 = t2 := sorry 
+    : EType e1 t1 → EType e1 t2 → t1 = t2 := sorry  
+    -- intros H1 
+    -- induction H1 with 
+    -- | TZero => intros H2 ; cases H2 ; rfl  
+    -- | TSucc e H1 IH1 => 
+    --   intros H2 
+    --   cases H2 with 
+    --   | TSucc e3 H3 => rfl
+    -- | TTrue => intros H2 ; cases H2 ; rfl 
+
 
   theorem Epreservation (e e' : Exp)(t : Ty) 
     : EType e t → EStep e e' → EType e' t := by 

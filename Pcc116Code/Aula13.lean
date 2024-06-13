@@ -4,6 +4,17 @@ import Mathlib.Data.Nat.Defs
 
 -- representing De Bruijn indexes 
 
+inductive UFin : ℕ → Type where 
+| Zero : ∀ {n}, UFin (n + 1)
+| Succ : ∀ {n}, UFin n → UFin (n + 1)
+
+inductive UTerm : ℕ → Type where 
+| UVar : ∀ {n}, UFin n → UTerm n 
+| UApp : ∀ {n}, UTerm n → UTerm n → UTerm n 
+| ULam : ∀ {n}, UTerm (n + 1) → UTerm n 
+
+-- tipos 
+
 inductive Idx {A : Type}(x : A) : List A → Type where 
 | Here : ∀ {xs}, Idx x (x :: xs)
 | There : ∀ {ys y}, Idx x ys → Idx x (y :: ys)
@@ -121,9 +132,9 @@ def Ty.asType : Ty → Type
 | Ty.Base => Bool 
 | Ty.Arr t1 t2 => t1.asType -> t2.asType 
 
+
 -- 2. intepreting environments 
 
-@[reducible]
 def semEnv : Ctx → Type 
 | [] => Unit 
 | x :: xs => x.asType × semEnv xs 

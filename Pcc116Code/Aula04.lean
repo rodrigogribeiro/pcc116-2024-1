@@ -17,7 +17,7 @@ def toN (n : Nat) : N :=
   | 0 => N.zero 
   | k + 1 => N.succ (toN k)
 
-#eval toN 5
+#eval toN 3
 
 -- definindo a adição 
 
@@ -43,40 +43,43 @@ succ (succ (succ zero))
 -- obter uma igualdade trivial (x = x) por simplificação 
 -- dizemos que essa igualdade vale por *definição*
 
-lemma plus_0_l (n : N) : zero .+. n = n := by 
-  simp only [plus]
+lemma plus_0_l (n : N) 
+  : zero .+. n = n := by
+  rfl  
 
 -- Segundo lemma 
 
-lemma plus_0_r (n : N) : n .+. zero = n := by
-  induction n with 
-  | zero => 
-    simp only [plus]
-  | succ n' IHn' => 
-    simp only [plus, IHn']
-    
-
-lemma plus_succ m n : succ (m .+. n) = m .+. succ n := by 
-  induction m with 
-  | zero => 
-    simp only [plus]
-  | succ m' IHm' => 
-    simp only [plus, IHm']
-
-theorem plus_comm (n m : N) : n .+. m = m .+. n := by 
-  induction n with 
-  | zero => 
-    simp only [plus, plus_0_r]
-  | succ n' IHn' => 
-    simp only [plus, IHn', plus_succ]
-
-theorem plus_assoc (n m p) 
-  : n .+. m .+. p = n .+. (m .+. p) := by 
+lemma plus_0_r (n : N) 
+  : n .+. zero = n := by
     induction n with 
     | zero => 
-      simp only [plus] -- forall . x = x
-    | succ n' IHn' => 
-      simp only [plus, IHn']
+      rfl    
+    | succ n' IH => 
+      simp only [plus, IH]
+
+lemma plus_succ m n 
+  : succ (m .+. n) = m .+. succ n := by
+  induction m with 
+  | zero => 
+    simp [plus]
+  | succ m' IH =>
+    simp [plus, IH]
+
+theorem plus_comm (n m : N) 
+  : n .+. m = m .+. n := by 
+    induction n with 
+    | zero => 
+      simp [plus, plus_0_r]
+    | succ n' IH =>
+      simp [plus, IH, plus_succ]
+
+theorem plus_assoc (n m p) 
+  : n .+. m .+. p = n .+. (m .+. p) := by
+  induction n with 
+  | zero => 
+    simp [plus]
+  | succ n' IH => 
+    simp [plus, IH]
 
 -- implementar multiplicação e sua prova de comutatividade 
 -- e associatividade. 
@@ -89,37 +92,15 @@ def mult (n m : N) : N :=
 infix:65 " .*. " => mult
 
 lemma mult_0_r (n : N) : n .*. N.zero = N.zero := by 
-  induction n with 
-  | zero => 
-    simp only [mult]
-  | succ n' IHn' => 
-    simp only [mult, plus, IHn']
-
-lemma plus_comm_3 (n m p : N) : 
-  n .+. m .+. p = m .+. n .+. p := by 
-  induction n with 
-  | zero => simp [plus, plus_0_r]
-  | succ n' IHn' => 
-    simp [plus, IHn', ← plus_succ]
+  sorry 
 
 lemma mult_succ (m n : N) : 
   m .*. succ n = m .+. m .*. n := by 
-  induction m with 
-  | zero => 
-    simp [mult, plus]
-  | succ m' IHm' => 
-    simp [mult, plus, IHm']
-    simp [← (plus_assoc _ _ (m' .*. n))
-         , plus_comm_3]
-    
+  sorry    
 
 theorem mult_comm (n m : N) 
   : n .*. m = m .*. n := by 
-  induction n with 
-  | zero => 
-    simp only [mult, mult_0_r]
-  | succ n' IHn' => 
-    simp only [mult, IHn', mult_succ] 
+  sorry 
 
 -- definição de double 
 
@@ -128,28 +109,16 @@ def double (n : N) : N :=
   | zero => zero 
   | succ n' => succ (succ (double n'))
 
-lemma double_correct n : double n = n .+. n := by 
+lemma double_correct n
+  : double n = n .+. n := by 
   induction n with 
   | zero => 
     simp [double, plus]
-  | succ n' IHn' => 
-    simp [double] 
-    simp [plus] 
-    simp [IHn'] 
-    simp [plus_succ]
+  | succ n' IH => 
+    simp [double, IH, plus, plus_succ]
 
 lemma double_correct1 n : double n = (toN 2) .*. n := by 
-  induction n with 
-  | zero => 
-    simp [double] 
-    simp [toN] 
-    simp [mult]
-    simp [plus]
-  | succ n' IHn' => 
-    simp [double]
-    simp [IHn', toN]
-    simp [mult, plus]
-    simp [plus_succ]
+  sorry 
 
 -- teste de igualdade 
 
@@ -161,10 +130,10 @@ def eqN (n m : N) : Bool :=
   | succ n', succ m' => eqN n' m' 
   | _ , _ => false 
 
-lemma eqN_refl n : eqN n n = true := by 
+lemma eqN_refl n : eqN n n = true := by
   induction n with 
-  | zero => simp [eqN]
-  | succ n' IHn' => simp [eqN, IHn']
+  | zero => simp [eqN] 
+  | succ n' IH => simp [eqN, IH]
 
 -- generalizar a hipótese de indução.
 
@@ -174,25 +143,40 @@ lemma eqN_refl n : eqN n n = true := by
 A → P = ∀ (_ : A), P -- x não ocorre em P
 -/
 
-lemma eqN_sound n m : eqN n m = true → n = m := by 
-  revert m
+lemma eqN_sound n m
+  : eqN n m = true → n = m := by 
+  revert m 
   induction n with 
-  | zero =>
-    intros m
-    rcases m with _ | m' <;> simp [eqN]
-  | succ n' IHn' => 
-    intros m 
-    rcases m with _ | m' <;> simp [eqN]
-    apply IHn'
+  | zero => 
+    intros m H 
+    cases m with 
+    | zero =>
+      simp [eqN]
+    | succ m' => 
+      simp [eqN] at H
+  | succ n' IH => 
+    intros m H 
+    cases m with 
+    | zero => 
+      simp [eqN] at H 
+    | succ m' => 
+      simp [eqN] at H
+      have H1 : n' = m' := by 
+        apply IH 
+        exact H 
+      rw [H1]
+
 
 lemma eqN_complete n m 
-  : n = m → eqN n m = true := by 
-  intros Heq 
-  rw [Heq, eqN_refl]
-  
-lemma eqN_sound_neq n m : eqN n m = false → n ≠ m := sorry 
+  : n = m → eqN n m = true := by
+  intros H 
+  simp [H, eqN_refl]
 
-lemma eqN_complete_neq n m : n ≠ m → eqN n m = false := sorry 
+ lemma eqN_sound_neq n m 
+  : eqN n m = false → n ≠ m := sorry 
+
+lemma eqN_complete_neq n m 
+  : n ≠ m → eqN n m = false := sorry 
 
 def leb (n m : N) : Bool := 
   match n, m with 
@@ -204,23 +188,86 @@ infix:60 " .<=. " => leb
 
 lemma leb_refl n : n .<=. n = true := by 
   induction n with 
-  | zero => simp [leb]
-  | succ n' IHn' => simp [leb, IHn']
+  | zero =>
+    simp [leb]
+  | succ n' IH => 
+    simp [leb, IH]
 
-lemma leb_trans n m p : n .<=. m → 
-                        m .<=. p → 
-                        n .<=. p := by 
-  revert m p 
+lemma leb_trans n : ∀ m p, n .<=. m → 
+                           m .<=. p → 
+                           n .<=. p := by
   induction n with 
-  | zero => intros _m _p _H1 _H2 
-            simp [leb]
-  | succ n' IHn' => 
-    intros m p H1 H2
-    rcases m with _ | m' <;> 
-    rcases p with _ | p' <;> 
-    simp [leb] at *
-    apply (IHn' m') <;> assumption 
+  | zero =>
+    intros m p H1 H2 
+    simp [leb]
+  | succ n' IH =>
+    intros m p H1 H2 
+    cases m with 
+    | zero =>
+      simp [leb] at H1
+    | succ m' => 
+      cases p with 
+      | zero =>
+        simp [leb] at H2 
+      | succ p' => 
+        simp [leb] at *
+        apply IH <;> assumption  
 
+lemma leb_antisym n : ∀ m, n .<=. m → 
+                           m .<=. n → 
+                           n = m := by 
+  induction n with 
+  | zero =>
+    intros m H1 H2 
+    cases m with 
+    | zero => 
+      rfl 
+    | succ m' => 
+      simp [leb] at H2
+  | succ n' IH => 
+    intros m H1 H2 
+    cases m with 
+    | zero =>
+      simp [leb] at H1
+    | succ m' =>
+      simp [leb] at *
+      exact (IH m' H1 H2)
+
+lemma le_plus_l : ∀ n m, n .<=. (n .+. m) := by
+  intros n 
+  induction n with 
+  | zero =>
+    intros m 
+    simp [leb]
+  | succ n' IH =>
+    intros m 
+    simp [plus, leb, IH]
+
+lemma plus_le_compat 
+  : ∀ n m p, n .<=. m → 
+             (n .+. p) .<=. (m .+. p) := by 
+  intros n 
+  induction n with 
+  | zero =>
+    intros m p H 
+    simp [plus, plus_comm m, le_plus_l]
+  | succ n' IH =>
+    intros m p H 
+    cases m with 
+    | zero =>
+      simp [leb] at H 
+    | succ m' => 
+      simp [leb] at H
+      simp [plus, leb]
+      apply IH <;> assumption
+
+lemma involution_injective (f : N → N) 
+  : (∀ n, n = (f (f n))) → 
+    ∀ n1 n2, f n1 = f n2 → n1 = n2 := by
+    intros H n1 n2 H1 
+    rw [H n1]
+    rw [H n2]
+    rw [H1]
 
 -- Exercícios: Números em binário
 /-

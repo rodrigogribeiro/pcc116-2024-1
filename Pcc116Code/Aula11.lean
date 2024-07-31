@@ -2,7 +2,9 @@
 
 import Mathlib.Tactic.Basic
 import Mathlib.Tactic.Linarith 
+import Mathlib.Tactic.Ring
 import Mathlib.Data.Nat.Defs
+import Aesop 
 
 -- ∀ {e}, ∃ r, f e = r
 -- funções devem ser totais
@@ -137,17 +139,22 @@ Para entender o conceito de alcançabilidade, é
 
 -- ∀ n, P n ≃ P 0 ∧ ∀ n, P n → P (n + 1)
 
-def strong_induction (P : ℕ → Prop) 
-  : (∀ m, (∀ k, k < m → P k) → P m) → ∀ n, P n  := by 
+def strong_induction (P : ℕ → Type) 
+  : (Step : ∀ m, (∀ k, k < m → P k) → P m) → ∀ n, P n  := by 
   intros IH n  
   have IH1 : ∀ p, p ≤ n → P p := by
     induction n with 
     | zero =>
-      intros p H 
-      cases H 
-      apply IH 
-      intros k Hk 
-      cases Hk 
+      intros p H
+      cases p
+      · 
+        apply IH 
+        intros k Hk
+        apply Nat.not_lt_zero at Hk 
+        cases Hk 
+      · 
+        apply Nat.not_succ_le_zero at H 
+        cases H 
     | succ n' IHn' => 
       intros p H 
       apply IH
@@ -218,7 +225,6 @@ lemma div_induction (P : ℕ → ℕ → Prop)
     IH n m h (div_induction P (n - m) m IH base)
   else base n m h 
 
-
 theorem div2_correct 
   : ∀ n m, ∃ q r, div2 n m = q ∧ n = m * q + r := by
     intros n m 
@@ -258,12 +264,12 @@ theorem div2_correct
 inductive DivDom : ℕ → ℕ → Type where 
 | Base1 : ∀ m, DivDom 0 (m + 1)
 | Base2 : ∀ n, DivDom (n + 1) 1
-| Step : ∀ {n m}, DivDom (n - m) m → DivDom n (m + 1) 
+| Step : ∀ n m, DivDom (n - m) m → DivDom n m 
 
 def div3F {n m} : DivDom n m → ℕ 
 | DivDom.Base1 _ => 0 
 | DivDom.Base2 n => n + 1 
-| DivDom.Step Hrec => 
+| DivDom.Step _ _ Hrec => 
   div3F Hrec + 1 
 
 -- tendo definido a função, o próximo passo é mostrar a totalidade do 
@@ -293,6 +299,102 @@ def div3 (n m : ℕ)(H : m ≠ 0) : ℕ :=
 -- Exercício: Desenvolva uma função que realiza a 
 -- intercalação de duas listas previamente ordenadas e 
 -- prove que esta função preserva a relação de ordenação
--- das listas fornecidas como argumento.
+-- das listas fornecidas como argumento. 
+
+inductive NatDec : ℕ → ℕ → Type 
+| LT : ∀ n m, n < m → NatDec n m 
+| EQ : ∀ n, NatDec n n
+| GT : ∀ n m, n > m → NatDec n m 
+
+def Nat.decide (n m : ℕ) : NatDec n m := 
+  match m with
+  | zero   => 
+    match n with 
+    | zero => by 
+      apply NatDec.EQ  
+    | succ n' => by 
+      apply NatDec.GT 
+      linarith 
+  | succ m' =>
+    match n with 
+    | zero => by 
+      apply NatDec.LT 
+      linarith 
+    | succ n' => by 
+      cases Nat.decide n' m' with 
+      | LT _ H => 
+        apply NatDec.LT 
+        linarith 
+      | EQ => 
+        apply NatDec.EQ 
+      | GT _ H =>
+        apply NatDec.GT 
+        linarith 
+
+inductive Dom : ℕ → ℕ → Type 
+| DomLt : ∀ n m, n < m → Dom n m 
+| DomGe : ∀ n m, n ≥ m → Dom (n - m) m → Dom n m
+
+@[simp]
+def div4F (n m : ℕ) : Dom n m → ℕ × ℕ
+| Dom.DomLt n m H => (0, n)
+| Dom.DomGe n m H1 H2 => 
+  match div4F _ _ H2 with 
+  | (q, r) => (q + 1, r)
 
 
+def dom (n m : ℕ) (H : m ≠ 0) : Dom n m := by 
+  cases Nat.decide n m with 
+  | LT _ H =>
+    apply Dom.DomLt 
+    exact H 
+  | EQ => 
+    apply Dom.DomGe 
+    linarith 
+    rw [Nat.sub_self]
+    cases n with 
+    | zero => simp at * 
+    | succ n' => 
+      apply Dom.DomLt 
+      linarith 
+  | GT _ H1 =>
+    apply Dom.DomGe 
+    linarith 
+    apply dom 
+    exact H
+
+def div4 (n m : ℕ)(H : m ≠ 0) : ℕ × ℕ := 
+  div4F n m (dom n m H)
+
+lemma div4F_correct (n m : ℕ)
+  : (d : Dom n m) → ∃ q r, div4F n m d = (q,r) ∧ n = m * q + r ∧ r < m
+  | Dom.DomLt n m H => by 
+    exists 0
+    exists n 
+    simp 
+    exact H
+  | Dom.DomGe n m H1 H2 => by 
+    have H3 : ∃ q1 r1, div4F (n - m) m H2 = (q1, r1) ∧ 
+              (n - m) = m * q1 + r1 ∧ r1 < m := by 
+      apply div4F_correct at H2
+      exact H2
+    rcases H3 with ⟨ q1 , r1 , H3 , H4, H5 ⟩ 
+    exists (q1 + 1)
+    exists r1 
+    simp [H3, H5]
+    rw [ Nat.mul_add 
+       , Nat.mul_one 
+       , Nat.add_assoc 
+       , Nat.add_comm m r1 
+       , ← Nat.add_assoc 
+       , ← H4 
+       , Nat.sub_add_cancel 
+       ]
+    omega
+
+theorem div4_correct (n m : ℕ)(H0 : m ≠ 0) 
+  : ∃ q r, div4 n m H0 = (q,r) ∧ n = m * q + r ∧ r < m := by
+    simp [div4]
+    apply div4F_correct 
+   
+    

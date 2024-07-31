@@ -1,5 +1,6 @@
 -- Aula 03: Programação funcional em Lean 
 
+import Mathlib.Data.Nat.Defs
 import Mathlib.Tactic.Basic
 
 -- # Interagindo com o Lean 
@@ -22,18 +23,10 @@ def helloLean := sayHello "Lean"
 
 #eval helloLean
 
-def maximum (n m : Nat) : Nat := 
+def maximum (n m : ℕ) : ℕ := 
   if n > m then n else m 
 
 #eval maximum (2 + 4) (2 * 8)
-/-
-Como a execução funciona? 
-
-maximum (2 + 4) (2 * 4) ==>
-maximum 6 8             ==> 
-if 6 > 8 then 6 else 8  ==> 
-8
--/ 
 
 -- # Tipos
 -- level polymorphism 
@@ -101,14 +94,15 @@ deriving Repr
 --       argumentos sintaticamente "menores".
 
 def nextDay (d : WeekDay) : WeekDay := 
+  open WeekDay in 
   match d with 
-  | WeekDay.Sunday => WeekDay.Monday 
-  | WeekDay.Monday => WeekDay.Tuesday
-  | WeekDay.Tuesday => WeekDay.Wednesday
-  | WeekDay.Wednesday => WeekDay.Thursday
-  | WeekDay.Thursday => WeekDay.Friday
-  | WeekDay.Friday => WeekDay.Saturday
-  | WeekDay.Saturday => WeekDay.Sunday 
+  | Sunday => Monday 
+  | Monday => Tuesday
+  | Tuesday => Wednesday
+  | Wednesday => Thursday
+  | Thursday => Friday
+  | Friday => Saturday
+  | Saturday => Sunday 
 
 #eval nextDay WeekDay.Thursday
 
@@ -130,10 +124,13 @@ def prevDay (d : WeekDay) : WeekDay :=
 
 lemma nextPrevId (d : WeekDay) 
   : prevDay (nextDay d) = d := by 
-  rcases d <;> simp only [nextDay, prevDay]
+    cases d <;> simp [nextDay, prevDay]
+  
 
-lemma prevNextId (d : WeekDay) : nextDay (prevDay d) = d := by 
-  rcases d <;> simp only [nextDay, prevDay]
+lemma prevNextId (d : WeekDay) 
+  : nextDay (prevDay d) = d := by 
+  cases d <;> simp [nextDay, prevDay]
+
 
 -- definição de boolean (presente na biblioteca)
 
@@ -147,15 +144,6 @@ def negb (x : Bool) : Bool :=
   match x with 
   | true => false 
   | _    => true 
-
-/-
-rcases b
-1. negb (negb true) = true 
-2. negb (negb false) = false 
-simp only [negb]
-1. negb false = true => true = true 
-2. negb true = false => false = false 
--/
 
 def andb (x y : Bool) : Bool := 
   match x with 
@@ -173,14 +161,13 @@ infixl:80 " .|. " => orb
 
 #eval true .&. true 
 
-lemma negb_inv (b : Bool) : negb (negb b) = b := by 
-  rcases b <;> simp only [negb]
+lemma negb_inv (b : Bool) : negb (negb b) = b := by
+  cases b <;> simp [negb]
 
-lemma andb_comm b1 b2 : b1 .&. b2 = b2 .&. b1 := by 
-  rcases b1 <;>
-  rcases b2 <;>
-  simp only [andb]
 
+lemma andb_comm b1 b2 : b1 .&. b2 = b2 .&. b1 := by
+  cases b2 <;> cases b1 <;> simp [andb]
+   
 lemma orb_comm b1 b2 : b1 .|. b2 = b2 .|. b1 := sorry 
 lemma andb_assoc b1 b2 b3 : 
   b1 .&. b2 .&. b3 = b1 .&. (b2 .&. b3) := sorry 
@@ -188,10 +175,12 @@ lemma andb_assoc b1 b2 b3 :
 lemma andb_orb b1 b2 : b1 .&. b2 = b1 .|. b2 → b1 = b2 := sorry  
 
 lemma deMorgan1 b1 b2 : 
-  negb (b1 .&. b2) = (negb b1) .|. (negb b2) := sorry 
+  negb (b1 .&. b2) = (negb b1) .|. (negb b2) := by 
+  cases b1 <;> cases b2 <;> simp [negb, andb, orb]
 
 lemma deMorgan2 b1 b2 : 
   negb (b1 .|. b2) = (negb b1) .&. (negb b2) := sorry 
+
 /-
 # Exercício: Modelando penalidade por atraso em entregas
 

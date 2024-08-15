@@ -13,8 +13,13 @@ inductive even : ℕ → Prop where
 | zero : even 0 
 | succ : ∀ n, even n → even (n + 2)
 
-example : even 8 := by 
-  sorry 
+example : even 8 := by
+  apply even.succ 
+  apply even.succ 
+  apply even.succ 
+  apply even.succ 
+  apply even.zero
+
 /-
 evenn = ∃ m, n = m * 2 -- não indutiva, recursiva
 
@@ -48,7 +53,12 @@ def nat_ind  (P : ℕ → Prop)
 -- customizado 
 
 lemma plus_0_left (n : ℕ) : 0 + n = n := by 
-  sorry 
+   induction n using nat_ind with 
+   | base => 
+      simp
+   | step n' _IH =>
+      simp  
+
 
 def nat_ind2 
   (P : ℕ → Prop)
@@ -61,8 +71,20 @@ def nat_ind2
     | 1 => one 
     | n' + 2 => step n' (nat_ind2 P zero one step n')
 
-lemma evenb_sound : ∀ n, evenb n = true → even n := by 
-  sorry 
+lemma evenb_sound : ∀ n, evenb n = true → even n := by
+  intros n 
+  induction n using nat_ind2 with 
+  | zero => 
+    simp [evenb] 
+    constructor 
+  | one => 
+    simp [evenb]
+  | step n' IH =>
+    simp [evenb]
+    intros H 
+    constructor 
+    apply IH 
+    assumption 
 
 lemma evenb_complete : ∀ n, even n → evenb n = true := by
   intros n H 
@@ -130,7 +152,8 @@ section EVEN_MUTUAL
 end EVEN_MUTUAL
 
 section EVEN_PROP 
-  def even_alt (n : ℕ) : Prop := ∃ m, n = 2 * m
+  def even_alt (n : ℕ) : Prop := 
+    ∃ m, n = 2 * m
 
   theorem even_even_alt (n : ℕ) 
     : even n → even_alt n := by
@@ -179,7 +202,22 @@ x ∈ (y :: ys)
 
   lemma member_sound (x : ℕ)(xs : List ℕ) 
     : member x xs = true → In x xs := by
-    sorry 
+    induction xs with 
+    | nil =>
+      intros H 
+      simp [member] at H 
+    | cons x' xs' IH => 
+      intros H 
+      simp [member] at H 
+      split at H
+      · 
+        apply In.There 
+        apply IH 
+        exact H 
+      · 
+        have H1 : x = x' := by assumption 
+        rw [H1]
+        apply In.Here 
 
   lemma member_complete (x : ℕ) xs 
     : In x xs → member x xs = true := by

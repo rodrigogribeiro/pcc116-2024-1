@@ -111,38 +111,94 @@ end MAP
 section FILTER 
   variable {A : Type}
 
-  def filter (p : A → Bool)(xs : list A) : list A := 
+  def filter (p : A → Bool)
+             (xs : list A) : list A := 
     match xs with 
     | nil => nil 
-    | cons y ys => if p y then cons y (filter p ys)
-                    else filter p ys
+    | cons y ys => 
+      if p y then cons y (filter p ys)
+      else filter p ys
 
-  lemma filter_cat (p : A → Bool)(xs ys : list A) : 
-    filter p xs .++. filter p ys = filter p (xs .++. ys) := by 
+  lemma filter_cat (p : A → Bool)
+                   (xs ys : list A) : 
+    filter p xs .++. filter p ys = 
+    filter p (xs .++. ys) := by 
+    induction xs with
+    | nil => 
+      simp [filter, cat]
+    | cons x' xs' IH => 
+      simp [filter, cat]
+      split
+      ·
+        simp [cat, IH]
+      · 
+        simp [IH]
+
+  lemma filter_reverse (p : A → Bool)
+                       (xs : list A) : 
+    reverse (filter p xs) = 
+    filter p (reverse xs) := by 
     sorry 
-
-  lemma filter_reverse (p : A → Bool)(xs : list A) : 
-    reverse (filter p xs) = filter p (reverse xs) := sorry 
 
   lemma filter_size (p : A → Bool)(xs : list A) : 
     size (filter p xs) ≤ size xs := by
     sorry 
 
+  lemma filter_and (p q : A → Bool)
+                   (xs : list A) : 
+    filter p (filter q xs) = 
+    filter (λ x => p x && q x) xs := by 
+    induction xs with 
+    | nil => 
+      simp [filter]
+    | cons x' xs' IH =>
+      simp [filter]
+      have H1 : ∃ b, p x' = b := by 
+        exists (p x') 
+      have H2 : ∃ b, q x' = b := by 
+        exists (q x') 
+      rcases H1 with ⟨ _ | _ , H1 ⟩ 
+      · 
+        rcases H2 with ⟨ _ | _, H2 ⟩ 
+        · 
+          simp [filter, H1, H2, IH]
+        · 
+          simp [filter, H1, H2, IH]
+      · 
+        rcases H2 with ⟨ _ | _, H2 ⟩ 
+        · 
+          simp [filter, H1, H2, IH]
+        · 
+          simp [filter, H1, H2, IH]
 end FILTER
+
 
 section MEMBERSHIP
   variable {A : Type}
 
-  def member [DecidableEq A](x : A)(xs : list A) : Bool := 
+  def member [DecidableEq A](x : A)
+                            (xs : list A) : Bool := 
     match xs with 
     | nil => false 
     | cons y ys => match decEq x y with 
                    | isFalse _ => member x ys 
                    | isTrue _ => true 
 
-  lemma member_cat_true_left [DecidableEq A](x : A)(xs : list A) : 
-    member x xs = true → member x (xs .++. ys) = true := by 
-    sorry 
+  lemma member_cat_true_left [DecidableEq A]
+                             (x : A)
+                             (xs : list A) : 
+    member x xs = true → 
+    member x (xs .++. ys) = true := by
+    induction xs with 
+    | nil => 
+      simp [member]
+    | cons x' xs' IH => 
+      simp [member]
+      split 
+      · 
+        exact IH 
+      · 
+        simp 
 
   lemma member_cat_true_right [DecidableEq A](x : A)(xs : list A) : 
     member x ys = true → member x (xs .++. ys) = true := sorry 

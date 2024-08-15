@@ -38,7 +38,6 @@ section PERM
       constructor 
       exact IHys 
 
-
   lemma perm_length_eq (xs ys : List A)(p : xs ~ ys) 
     : List.length xs = List.length ys := 
     p.rec rfl 
@@ -73,15 +72,17 @@ end PERM
 inductive Sorted : List ℕ → Prop where 
 | SortedNil : Sorted []
 | SortedSingle : ∀ x, Sorted (x :: [])
-| SortedCons : ∀ x y ys, x ≤ y → Sorted (y :: ys) → 
-                                 Sorted (x :: y :: ys)
+| SortedCons : ∀ x y ys, x ≤ y → 
+              Sorted (y :: ys) → 
+              Sorted (x :: y :: ys)
 
 def insert1 (x : ℕ)(ys : List ℕ) : List ℕ := 
   match ys with 
   | [] => [x]
-  | y' :: ys' => match Nat.decLe x y' with 
-                 | isTrue _ => x :: y' :: ys' 
-                 | isFalse _ => y' :: insert1 x ys'
+  | y' :: ys' => 
+    match Nat.decLe x y' with 
+    | isTrue _ => x :: y' :: ys' 
+    | isFalse _ => y' :: insert1 x ys'
 
 def isort (xs : List ℕ) : List ℕ := 
   match xs with 

@@ -116,7 +116,7 @@ declare_syntax_cat imp_stmt
 
 syntax "skip" : imp_stmt 
 syntax ident ":=" imp_exp : imp_stmt 
-syntax imp_stmt ";;" imp_stmt : imp_stmt 
+syntax imp_stmt ":;:" imp_stmt : imp_stmt 
 syntax "if" imp_exp "then" imp_stmt "else" imp_stmt "fi" : imp_stmt 
 syntax "while" imp_exp "do" imp_stmt "od" : imp_stmt 
 
@@ -126,7 +126,7 @@ partial def elabStmt : Syntax → MetaM Expr
   let i : Expr := mkStrLit i.getId.toString
   let e ← elabExp e 
   mkAppM ``Stmt.Assign #[i, e]
-| `(imp_stmt| $s1:imp_stmt ;; $s2:imp_stmt) => do 
+| `(imp_stmt| $s1:imp_stmt :;: $s2:imp_stmt) => do 
   let s1 ← elabStmt s1 
   let s2 ← elabStmt s2 
   mkAppM ``Stmt.Seq #[s1, s2]
@@ -144,12 +144,12 @@ partial def elabStmt : Syntax → MetaM Expr
 elab "{imp|" p: imp_stmt "}" : term => elabStmt p
 
 #reduce {imp|
-  a := 5 ;; 
+  a := 5 :;: 
   if a < 3 and a < 1 then 
     c := 5
   else 
     skip 
-  fi ;;  
+  fi :;:  
   d := c + 3  
 }
 
@@ -269,7 +269,9 @@ theorem Skip_rule (P : Env → Prop)
   cases Hev 
   exact Hp 
 
-def assertion_sub (s : String) (e : IExp) (P : Env → Prop) : Env → Prop := 
+def assertion_sub (s : String) 
+                  (e : IExp) 
+                  (P : Env → Prop) : Env → Prop := 
   λ env => P (s |-> (evalExp e env) ; env)
 
 macro P:term "[*" s:term "↦" e:term "*]" : term => 
@@ -285,5 +287,12 @@ theorem Assign_rule (P : Env → Prop)
   rename_i He 
   rw [← He]
   assumption
+
+theorem Seq_rule (P Q R : Env → Prop) s1 s2 
+  : {* P *} (s1) {* Q *} → 
+    {* Q *} (s2) {* R *} → 
+    {* P *} (.Seq s1 s2) {* R *} := by
+    intros H1 H2 env env' HP Hs 
+    rcases Hs ; aesop 
 
 

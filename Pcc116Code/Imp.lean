@@ -3,296 +3,382 @@ import Mathlib.Tactic.Basic
 import Aesop
 import Lean.Elab.Tactic
 
-open Lean Elab Meta
+-- definition of state
 
--- literals 
+namespace ImpState 
 
-inductive Lit : Type
-| INat : ℕ → Lit 
+  def State : Type := 
+    String → ℕ 
 
--- operators 
+  def State.update (name : String)
+                   (val : ℕ)
+                   (s : State) : State :=
+    λ name' => if name' = name then val 
+               else s name' 
 
-inductive Unop : Type 
-| Unot : Unop
+  macro s:term "[" name:term "↦" val:term "]" : term =>
+  `(State.update $name $val $s)
 
-inductive Binop : Type 
-| BPlus : Binop 
-| BAnd  : Binop 
-| BLess : Binop 
+  @[simp] 
+  theorem update_apply (name : String) 
+                       (val : ℕ) 
+                       (s : State) 
+    : (s[name ↦ val]) name = val :=
+  by
+    apply if_pos
+    rfl
 
--- expressions 
+  @[simp] 
+  theorem update_apply_neq (name name' : String) 
+                           (val : ℕ) (s : State)
+                           (hneq : name' ≠ name)
+    : (s[name ↦ val]) name' = s name' := by
+      apply if_neg
+      assumption
 
-inductive IExp : Type 
-| ELit : Lit → IExp 
-| EVar : String → IExp 
-| EUn : Unop → IExp → IExp 
-| BOp : Binop → IExp → IExp → IExp 
+  @[simp] 
+  theorem update_override (name : String) 
+                          (val₁ val₂ : ℕ) 
+                          (s : State)
+    : s[name ↦ val₂][name ↦ val₁] = s[name ↦ val₁] := by
+    apply funext
+    intro name'
+    cases Classical.em (name' = name) with
+    | inl h => simp [h]
+    | inr h => simp [h]
 
--- programs 
+  @[simp] 
+  theorem update_swap (name₁ name₂ : String) 
+                      (val₁ val₂ : ℕ) 
+                      (s : State)
+                      (hneq : name₁ ≠ name₂) 
+    : s[name₂ ↦ val₂][name₁ ↦ val₁] = 
+      s[name₁ ↦ val₁][name₂ ↦ val₂] := by
+        apply funext
+        intro name'
+        cases Classical.em (name' = name₁) with
+        | inl h => simp [*]
+        | inr h =>
+           cases Classical.em (name' = name₁) with
+           | inl h => simp [*]
+           | inr h => simp [State.update, *]
 
-inductive Stmt : Type 
-| Skip : Stmt 
-| Assign : String → IExp → Stmt 
-| Seq : Stmt → Stmt → Stmt 
-| If : IExp → Stmt → Stmt → Stmt 
-| While : IExp → Stmt → Stmt 
+  @[simp] 
+  theorem update_id (name : String) (s : State) 
+    : s[name ↦ s name] = s := by
+      apply funext
+      intro name'
+      simp [State.update]
+      intro heq
+      simp [*]
 
--- elaborating syntax using macros 
+  @[simp] 
+  theorem update_same_const (name : String)
+                            (val : ℕ) 
+    : (fun _ ↦ val)[name ↦ val] = (fun _ ↦ val) := by
+    apply funext
+    simp [State.update]
+end ImpState
 
-declare_syntax_cat imp_lit
+namespace ImpSyntax
+  open ImpState 
 
-syntax num : imp_lit
-syntax "true" : imp_lit
-syntax "false" : imp_lit
+  inductive Stmt : Type where
+  | skip       : Stmt
+  | assign     : String → (State → ℕ) → Stmt
+  | seq        : Stmt → Stmt → Stmt
+  | ifThenElse : (State → Prop) → Stmt → Stmt → Stmt
+  | whileDo    : (State → Prop) → Stmt → Stmt
 
-def elabLit : Syntax → MetaM Expr 
-| `(imp_lit| $n:num) => mkAppM ``Lit.INat #[mkNatLit n.getNat]
-| `(imp_lit| true) => mkAppM ``Lit.INat #[mkNatLit 1]
-| `(imp_lit| false) => mkAppM ``Lit.INat #[mkNatLit 0]
-| _ => throwUnsupportedSyntax
+  infixr:90 "; " => Stmt.seq
 
-elab "test_elabLit" l:imp_lit : term => elabLit l
+end ImpSyntax
 
-#reduce test_elabLit 3 
-#reduce test_elabLit true 
+namespace ImpSemantics 
 
-declare_syntax_cat imp_unop
+  open ImpSyntax ImpState 
 
-syntax "not" : imp_unop 
+  inductive BigStep : Stmt × State → State → Prop where
+  | skip (s) :
+    BigStep (Stmt.skip, s) s
+  | assign (x a s) :
+    BigStep (Stmt.assign x a, s) (s[x ↦ a s])
+  | seq (S T s t u) (hS : BigStep (S, s) t)
+      (hT : BigStep (T, t) u) :
+    BigStep (S; T, s) u
+  | if_true (B S T s t) (hcond : B s)
+      (hbody : BigStep (S, s) t) :
+    BigStep (Stmt.ifThenElse B S T, s) t
+  | if_false (B S T s t) (hcond : ¬ B s)
+      (hbody : BigStep (T, s) t) :
+    BigStep (Stmt.ifThenElse B S T, s) t
+  | while_true (B S s t u) (hcond : B s)
+      (hbody : BigStep (S, s) t)
+      (hrest : BigStep (Stmt.whileDo B S, t) u) :
+    BigStep (Stmt.whileDo B S, s) u
+  | while_false (B S s) (hcond : ¬ B s) :
+    BigStep (Stmt.whileDo B S, s) s
 
-def elabUnop : Syntax → MetaM Expr 
-| `(imp_unop| not) => return .const ``Unop.Unot []
-| _ => throwUnsupportedSyntax
+  infix:110 " ⟹ " => BigStep
 
-declare_syntax_cat imp_bin_op 
+end ImpSemantics
 
-syntax "+" : imp_bin_op
-syntax "and" : imp_bin_op
-syntax "<" : imp_bin_op
+namespace ImpHoare
 
-def elabBinop : Syntax → MetaM Expr 
-| `(imp_bin_op| +) => return .const ``Binop.BPlus []
-| `(imp_bin_op| and) => return .const ``Binop.BAnd []
-| `(imp_bin_op| <) => return .const ``Binop.BLess []
-| _ => throwUnsupportedSyntax
+  open ImpState ImpSyntax ImpSemantics
 
--- elaborating expressions 
+  def PartialHoare (P : State → Prop) (S : Stmt)
+                   (Q : State → Prop) : Prop :=
+      ∀ s t, P s → (S, s) ⟹ t → Q t
 
-declare_syntax_cat imp_exp 
+  macro "{*" P:term " *} " 
+        "(" S:term ")" 
+        " {* " Q:term " *}" : term => 
+        `(PartialHoare $P $S $Q)
 
-syntax imp_lit : imp_exp 
-syntax ident : imp_exp 
-syntax imp_unop imp_exp : imp_exp 
-syntax imp_exp imp_bin_op imp_exp : imp_exp 
+  theorem skip_intro {P} :
+    {* P *} (Stmt.skip) {* P *} := by
+    intro s t hs hst
+    cases hst
+    assumption
 
-syntax "(" imp_exp ")" : imp_exp 
+  theorem assign_intro (P) {x a} :
+    {* fun s ↦ P (s[x ↦ a s]) *} 
+      (Stmt.assign x a) 
+    {* P *} := by
+    intro s t P' hst
+    cases hst with
+    | assign => assumption
 
-partial def elabExp : Syntax → MetaM Expr 
-| `(imp_exp| $l:imp_lit) => do 
-  let l ← elabLit l 
-  mkAppM ``IExp.ELit #[l] 
-| `(imp_exp| $i:ident) => 
-  mkAppM ``IExp.EVar #[mkStrLit i.getId.toString]
-| `(imp_exp| $b:imp_unop $e:imp_exp) => do 
-  let b ← elabUnop b 
-  let e ← elabExp e 
-  mkAppM ``IExp.EUn #[b,e]
-| `(imp_exp| $l:imp_exp $b:imp_bin_op $r:imp_exp) => do 
-  let l ← elabExp l 
-  let b ← elabBinop b 
-  let r ← elabExp r 
-  mkAppM ``IExp.BOp #[b, l, r]
-| `(imp_exp| ($e:imp_exp)) => 
-  elabExp e
-| _ => throwUnsupportedSyntax 
+  theorem seq_intro {P Q R S T} 
+    (hS : {* P *} (S) {* Q *})
+    (hT : {* Q *} (T) {* R *}) : 
+    {* P *} (S ; T) {* R *} := by
+    intro s t hs hst
+    cases hst with
+    | seq _ _ _ u d hS' hT' =>
+      apply hT
+      apply hS 
+      exact hs 
+      assumption 
+      assumption 
 
-elab "test_elabExp" e:imp_exp : term => elabExp e 
+  theorem if_intro {B P Q S T}
+      (hS : {* fun s ↦ P s ∧ B s *} (S) {* Q *})
+      (hT : {* fun s ↦ P s ∧ ¬ B s *} (T) {* Q *}) :
+    {* P *} (Stmt.ifThenElse B S T) {* Q *} := by
+      intro s t hs hst
+      cases hst with
+      | if_true _ _ _ _ _ hB hS' =>
+         apply hS
+         exact And.intro hs hB
+         assumption
+      | if_false _ _ _ _ _ hB hT' =>
+         apply hT
+         exact And.intro hs hB
+         assumption
 
-#reduce test_elabExp a + 3
+  theorem while_intro (P) {B S}
+    (h : {* fun s ↦ P s ∧ B s *} (S) {* P *}) :
+    {* P *} 
+      (Stmt.whileDo B S) 
+    {* fun s ↦ P s ∧ ¬ B s *} := by
+      intro s t hs hst
+      generalize ws_eq : (Stmt.whileDo B S, s) = Ss
+      rw [ws_eq] at hst
+      induction hst generalizing s with
+      | skip s'                       => cases ws_eq
+      | assign x a s'                 => cases ws_eq
+      | seq S T s' t' u hS hT ih      => cases ws_eq
+      | if_true B S T s' t' hB hS ih  => cases ws_eq
+      | if_false B S T s' t' hB hT ih => cases ws_eq
+      | while_true B' S' s' t' u hB' hS hw ih_hS ih_hw =>
+        cases ws_eq
+        apply ih_hw
+        apply h
+        apply And.intro <;> assumption
+        exact hS 
+        rfl 
+      | while_false B' S' s' hB'      =>
+        cases ws_eq
+        aesop
 
--- statements 
+  theorem consequence {P P' Q Q' S}
+    (h : {* P *} (S) {* Q *}) 
+    (hp : ∀s, P' s → P s)
+    (hq : ∀s, Q s → Q' s) : {* P' *} (S) {* Q' *} := by 
+    intros s t Hs Hst 
+    apply hq 
+    apply h 
+    apply hp 
+    exact Hs 
+    exact Hst 
 
-declare_syntax_cat imp_stmt 
+  theorem consequence_left (P') {P Q S}
+    (h : {* P *} (S) {* Q *}) 
+    (hp : ∀s, P' s → P s) : {* P' *} (S) {* Q *} := by 
+    apply consequence <;> try assumption 
+    aesop 
 
-syntax "skip" : imp_stmt 
-syntax ident ":=" imp_exp : imp_stmt 
-syntax imp_stmt ":;:" imp_stmt : imp_stmt 
-syntax "if" imp_exp "then" imp_stmt "else" imp_stmt "fi" : imp_stmt 
-syntax "while" imp_exp "do" imp_stmt "od" : imp_stmt 
+theorem consequence_right (Q) {Q' P S}
+    (h : {* P *} (S) {* Q *}) 
+    (hq : ∀s, Q s → Q' s) : {* P *} (S) {* Q' *} := by 
+    apply consequence <;> try assumption 
+    aesop 
 
-partial def elabStmt : Syntax → MetaM Expr 
-| `(imp_stmt| skip) => return .const ``Stmt.Skip []
-| `(imp_stmt| $i:ident := $e:imp_exp) => do 
-  let i : Expr := mkStrLit i.getId.toString
-  let e ← elabExp e 
-  mkAppM ``Stmt.Assign #[i, e]
-| `(imp_stmt| $s1:imp_stmt :;: $s2:imp_stmt) => do 
-  let s1 ← elabStmt s1 
-  let s2 ← elabStmt s2 
-  mkAppM ``Stmt.Seq #[s1, s2]
-| `(imp_stmt| if $e:imp_exp then $s1:imp_stmt else $s2:imp_stmt fi) => do 
-  let e ← elabExp e 
-  let s1 ← elabStmt s1 
-  let s2 ← elabStmt s2 
-  mkAppM ``Stmt.If #[e,s1,s2]
-| `(imp_stmt| while $e:imp_exp do $s:imp_stmt od) => do 
-  let e ← elabExp e 
-  let s ← elabStmt s 
-  mkAppM ``Stmt.While #[e, s]
-| _ => throwUnsupportedSyntax
+theorem skip_intro' {P Q} (h : ∀s, P s → Q s) :
+  {* P *} (Stmt.skip) {* Q *} := by 
+  apply consequence
+  apply skip_intro 
+  assumption 
+  aesop 
 
-elab "{imp|" p: imp_stmt "}" : term => elabStmt p
+theorem assign_intro' {P Q x a}
+    (h : ∀s, P s → Q (s[x ↦ a s])):
+  {* P *} (Stmt.assign x a) {* Q *} :=
+  consequence (assign_intro Q) h (by aesop)
 
-#reduce {imp|
-  a := 5 :;: 
-  if a < 3 and a < 1 then 
-    c := 5
-  else 
-    skip 
-  fi :;:  
-  d := c + 3  
-}
+theorem seq_intro' {P Q R S T} 
+    (hT : {* Q *} (T) {* R *})
+    (hS : {* P *} (S) {* Q *}) :
+  {* P *} (S; T) {* R *} := by 
+  apply seq_intro 
+  exact hS 
+  exact hT 
 
--- environments 
+theorem while_intro' {B P Q S} (I)
+    (hS : {* fun s ↦ I s ∧ B s *} (S) {* I *})
+    (hP : ∀s, P s → I s)
+    (hQ : ∀s, ¬ B s → I s → Q s) :
+  {* P *} (Stmt.whileDo B S) {* Q *} := by 
+  apply consequence 
+  apply while_intro 
+  exact hS 
+  exact hP 
+  aesop 
 
-abbrev Value := ℕ 
+theorem assign_intro_forward (P) {x a} :
+  {* P *}
+    (Stmt.assign x a)
+  {* fun s ↦ ∃n₀, P (s[x ↦ n₀]) ∧ s x = a (s[x ↦ n₀]) *} := by
+    apply assign_intro'
+    intro s hP
+    apply Exists.intro (s x)
+    simp [*]
 
-inductive Result (A : Type) : Type where 
-| Ok : A → Result A 
-| TypeError : Result A 
-| OutOfFuel : Result A  
-
--- semantics of expressions 
-
-abbrev Env := String → Value 
-
-def emptyEnv : Env := λ _ => 0
-
-def updateEnv : String → Value → Env → Env
-| s, v, env => λ s' =>
-  if Substring.beq s.toSubstring s'.toSubstring
-  then v
-  else env s
-
-macro  x:term "|->" v:term ";" s:term  : term => 
-  `(updateEnv $x $v $s)
-
-def vlt (n1 n2 : Value) : Value := 
-  if Nat.blt n1 n2 then 1 else 0
-
-def vand (n1 n2 : Value) : Value := 
-  if Nat.beq n1 0 then 0 else n2 
-
-def vnot (n1 : Value) : Value := 
-  if Nat.ble n1 0 then 1 else 0  
-
-def evalBOp : Binop → Value → Value → Value
-| Binop.BPlus => λ x y => x + y  
-| Binop.BLess => vlt 
-| Binop.BAnd => vand  
-
-def evalExp : IExp → Env → Value
-| IExp.ELit (Lit.INat l), _ => l 
-| IExp.EVar v, env => env v
-| IExp.EUn _ e1, env => vnot (evalExp e1 env)
-| IExp.BOp op e1 e2, env => 
-  (evalBOp op) (evalExp e1 env) (evalExp e2 env)
-
-abbrev Fuel := ℕ
-
-def evalStmt : Fuel → Stmt → Env → Result Env 
-| 0 , _ , _ => Result.OutOfFuel
-| _ + 1, Stmt.Skip , env => Result.Ok env 
-| _ + 1, Stmt.Assign v e, env =>
-  Result.Ok (v |-> (evalExp e env) ; env)
-| fuel' + 1, Stmt.Seq s1 s2, env => 
-  match evalStmt fuel' s1 env with 
-  | Result.Ok env1 => evalStmt fuel' s2 env1
-  | r => r 
-| fuel' + 1, Stmt.If e s1 s2, env => 
-  match evalExp e env with 
-  | 0 => 
-    evalStmt fuel' s2 env 
-  | _ + 1 => 
-    evalStmt fuel' s1 env 
-| fuel' + 1, Stmt.While e s1, env => 
-  match evalExp e env with 
-  | _ + 1 => 
-    match evalStmt fuel' s1 env with 
-    | Result.Ok env1 => 
-      evalStmt fuel' (Stmt.While e s1) env1
-    | r => r 
-  | 0 => Result.Ok env 
-
--- semantics of statements 
-
-inductive Eval : Env → Stmt → Env → Prop
-| ESkip : ∀ env, Eval env Stmt.Skip env
-| EAssign : ∀ env s e v,
-            evalExp e env = v →
-            Eval env (Stmt.Assign s e) (s |-> v ; env)
-| ESeq : ∀ env env1 env2 s1 s2,
-           Eval env s1 env1 →
-           Eval env1 s2 env2 →
-           Eval env (Stmt.Seq s1 s2) env2
-| EIfTrue : ∀ env e s1 s2 env1 n,
-            evalExp e env = n + 1 →
-            Eval env s1 env1 →
-            Eval env (Stmt.If e s1 s2) env1
-| EIfFalse : ∀ env e s1 s2 env2,
-            evalExp e env = 0 →
-            Eval env s2 env2 →
-            Eval env (Stmt.If e s1 s2) env2
-| EWhileFalse : ∀ env e s1,
-            evalExp e env = 0 →
-            Eval env (Stmt.While e s1) env
-| EWhileTrue : ∀ env env1 env2 e s1 n,
-            evalExp e env = n + 1 →
-            Eval env s1 env1 →
-            Eval env1 (Stmt.While e s1) env2 →
-            Eval env (Stmt.While e s1) env2
-
-
--- Hoare logic 
-
-def Hoare (P : Env → Prop)(s : Stmt)(Q : Env → Prop) :=
-  ∀ (env env' : Env), P env → Eval env s env' → Q env'
-
-macro "{*" P:term " *} " "(" s:term ")" " {* " Q:term " *}" : term =>
-  `(Hoare $P $s $Q)
-
--- rules of Hoare logic 
-
-theorem Skip_rule (P : Env → Prop) 
-  : {* P *} (Stmt.Skip) {* P *}:= by 
-  intros env env' Hp Hev
-  cases Hev 
-  exact Hp 
-
-def assertion_sub (s : String) 
-                  (e : IExp) 
-                  (P : Env → Prop) : Env → Prop := 
-  λ env => P (s |-> (evalExp e env) ; env)
-
-macro P:term "[*" s:term "↦" e:term "*]" : term => 
-  `(assertion_sub $s $e $P)
-
-theorem Assign_rule (P : Env → Prop)
-  s e :   {* P [* s ↦ e *] *}
-            (Stmt.Assign s e) 
-          {* P *} := by 
-  intros env env' Hp H1
-  cases H1
-  rw [assertion_sub] at Hp
-  rename_i He 
-  rw [← He]
-  assumption
-
-theorem Seq_rule (P Q R : Env → Prop) s1 s2 
-  : {* P *} (s1) {* Q *} → 
-    {* Q *} (s2) {* R *} → 
-    {* P *} (.Seq s1 s2) {* R *} := by
-    intros H1 H2 env env' HP Hs 
-    rcases Hs ; aesop 
+theorem assign_intro_backward (Q) {x a} :
+  {* fun s ↦ ∃n', Q (s[x ↦ n']) ∧ n' = a s *}
+    (Stmt.assign x a)
+  {* Q *} := by
+    apply assign_intro'
+    intro s hP
+    cases hP with
+    | intro n' hQ => aesop 
 
 
+  def Stmt.invWhileDo (I B : State → Prop) (S : Stmt) : Stmt :=
+    Stmt.whileDo B S
+
+  theorem invWhile_intro {B I Q S}
+    (hS : {* fun s ↦ I s ∧ B s *} (S) {* I *})
+    (hQ : ∀s, ¬ B s → I s → Q s) :
+    {* I *} (Stmt.invWhileDo I B S) {* Q *} := by 
+      apply while_intro' <;> aesop 
+      
+  theorem invWhile_intro' {B I P Q S}
+    (hS : {* fun s ↦ I s ∧ B s *} (S) {* I *})
+    (hP : ∀s, P s → I s) (
+    hQ : ∀s, ¬ B s → I s → Q s) :
+    {* P *} (Stmt.invWhileDo I B S) {* Q *} := by 
+      apply while_intro' <;> aesop 
+
+end ImpHoare
+
+namespace ImpSwap
+  open ImpSyntax ImpState ImpSemantics ImpHoare
+
+  def SWAP : Stmt :=
+    Stmt.assign "t" (fun s ↦ s "a");
+    Stmt.assign "a" (fun s ↦ s "b");
+    Stmt.assign "b" (fun s ↦ s "t")
+
+  theorem SWAP_correct (a₀ b₀ : ℕ) :
+    {* fun s ↦ s "a" = a₀ ∧ s "b" = b₀ *}
+      (SWAP)
+    {* fun s ↦ s "a" = b₀ ∧ s "b" = a₀ *} := by
+      apply seq_intro'
+      apply seq_intro'
+      apply assign_intro
+      apply assign_intro
+      apply assign_intro'
+      aesop
+
+end ImpSwap
+
+namespace ImpVCG
+  open Lean Lean.Parser 
+  open Lean.Parser.Term Lean.Meta Lean.Elab.Tactic
+  open ImpHoare ImpSyntax 
+
+  def matchPartialHoare 
+    : Expr → Option (Expr × Expr × Expr)
+  | (Expr.app (Expr.app (Expr.app
+       (Expr.const ``PartialHoare _) P) S) Q) =>
+    Option.some (P, S, Q)
+  | _ =>
+    Option.none
+
+  def applyConstant (name : Name) : TacticM Unit :=
+   do
+      let cst ← mkConstWithFreshMVarLevels name
+      liftMetaTactic (fun goal ↦ MVarId.apply goal cst)
+
+  partial def vcg : TacticM Unit :=
+    do
+      let goals ← getUnsolvedGoals
+      if goals.length != 0 then
+        let target ← getMainTarget
+        match matchPartialHoare target with
+        | Option.none           => return
+        | Option.some (P, S, _Q) =>
+          if Expr.isAppOfArity S ``Stmt.skip 0 then
+            if Expr.isMVar P then
+              applyConstant ``skip_intro
+            else
+              applyConstant ``skip_intro'
+          else if Expr.isAppOfArity S ``Stmt.assign 2 then
+            if Expr.isMVar P then
+              applyConstant ``assign_intro
+            else
+              applyConstant ``assign_intro'
+          else if Expr.isAppOfArity S ``Stmt.seq 2 then
+            andThenOnSubgoals
+              (applyConstant ``seq_intro') vcg
+          else if Expr.isAppOfArity S ``Stmt.ifThenElse 3 then
+            andThenOnSubgoals
+              (applyConstant ``if_intro) vcg
+          else if Expr.isAppOfArity S ``Stmt.invWhileDo 3 then
+            if Expr.isMVar P then
+              andThenOnSubgoals
+                (applyConstant ``invWhile_intro) vcg
+            else
+              andThenOnSubgoals
+                (applyConstant ``invWhile_intro')
+                vcg
+          else
+            failure
+
+elab "vcg" : tactic =>
+  vcg 
+
+end ImpVCG
+
+namespace SwapVCG
+  open ImpVCG ImpSwap
+
+  theorem SWAP_vcg (a₀ b₀ : ℕ) :
+    {* fun s ↦ s "a" = a₀ ∧ s "b" = b₀ *}
+      (SWAP)
+    {* fun s ↦ s "a" = b₀ ∧ s "b" = a₀ *} := by
+    sorry 
+end SwapVCG

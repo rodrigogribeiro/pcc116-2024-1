@@ -116,7 +116,9 @@ section VEC
 --  ∀ (xs ys : List A), 
 --      length (xs ++ ys) = length xs + length ys
 
-def vapp {n m : ℕ}(xs : Vec A n)(ys : Vec A m) 
+def vapp {n m : ℕ}
+         (xs : Vec A n)
+         (ys : Vec A m) 
   : Vec A (plus n m) :=
   match xs with 
   | Vec.nil => ys 
@@ -166,7 +168,8 @@ def List.lookup {A}(xs : List A)(n : ℕ) : Option A :=
 def Vec.lookup {A n}(xs : Vec A n)(idx : fin n) : A := 
   match idx, xs with 
   | fin.zero, Vec.cons x _ => x 
-  | fin.succ idx, Vec.cons _ xs => Vec.lookup xs idx
+  | fin.succ idx, Vec.cons _ xs => 
+    Vec.lookup xs idx
 
 -- another application: universe pattern 
 -- Tipo para códigos 
@@ -196,7 +199,7 @@ def decode (ty : NatOrBool)
     | _ => .none
 
 #eval decode .nat "123"
-#eval decode .nat ""
+#eval decode .nat "avc"
 #eval decode .bool "12"
 #eval decode .bool "true"
 

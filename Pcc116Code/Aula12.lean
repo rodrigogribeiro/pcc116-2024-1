@@ -12,13 +12,18 @@ section TOY
   | C : ℕ → Tm 
   | P : Tm → Tm → Tm 
 
+  instance : OfNat Tm (n : ℕ) where
+    ofNat := Tm.C n 
+
+  infixl:65 " .+. " => Tm.P
+
   -- semântica denotacional 
 
   @[simp] 
   def evalTm (t : Tm) : ℕ := 
     match t with 
     | Tm.C n => n 
-    | Tm.P t1 t2 => evalTm t1 + evalTm t2 
+    | t1 .+. t2 => evalTm t1 + evalTm t2 
 
   -- semântica big-step 
 
@@ -30,11 +35,12 @@ section TOY
   | Ev_Plus : ∀ {t1 n1 t2 n2}, 
                 Eval t1 n1 → 
                 Eval t2 n2 → 
-                Eval (Tm.P t1 t2)
+                Eval (t1 .+. t2)
                      (n1 + n2)
 
 
-  lemma Eval_eval (t : Tm) : Eval t (evalTm t) := by 
+  lemma Eval_eval (t : Tm) 
+    : Eval t (evalTm t) := by 
     induction t with 
     | C n => 
       simp ; constructor    
@@ -45,16 +51,21 @@ section TOY
   -- semântica small step 
 
   inductive Step : Tm → Tm → Prop where 
-  | SPlusConst : ∀ n1 n2, Step (Tm.P (Tm.C n1) (Tm.C n2)) 
-                               (Tm.C (n1 + n2))
-  | SPlus1 : ∀ t1 t1' t2, Step t1 t1' → 
-                          Step (Tm.P t1 t2) (Tm.P t1' t2)
-  | SPlus2 : ∀ n1 t2 t2', Step t2 t2' → 
-                          Step (Tm.P (Tm.C n1) t2)
-                               (Tm.P (Tm.C n1) t2')
+  | SPlusConst : ∀ n1 n2, 
+      Step (Tm.P (Tm.C n1) (Tm.C n2)) 
+           (Tm.C (n1 + n2))
+  | SPlus1 : ∀ t1 t1' t2, 
+            Step t1 t1' → 
+            Step (t1 .+. t2) (t1' .+. t2)
+  | SPlus2 : ∀ n1 t2 t2', 
+            Step t2 t2' → 
+            Step ((Tm.C n1) .+. t2)
+                 ((Tm.C n1) .+. t2')
 
   lemma Step_deterministic (t1 t2 t3 : Tm) 
-    : Step t1 t2 → Step t1 t3 → t2 = t3 := by 
+    : Step t1 t2 → 
+      Step t1 t3 → 
+      t2 = t3 := by 
     intros Ht1 
     induction Ht1 generalizing t3 with 
     | SPlusConst n1 n2 => 
@@ -89,7 +100,8 @@ section TOY
 
   -- Exercício
 
-  theorem strong_progress (t : Tm) : TmValue t ∨ ∃ t', Step t t' := 
+  theorem strong_progress (t : Tm) 
+    : TmValue t ∨ ∃ t', Step t t' := 
     sorry 
 
 end TOY 
@@ -113,16 +125,20 @@ section ARITH
 
   inductive NatVal : Exp → Prop where 
   | ValZero : NatVal Exp.Zero 
-  | ValSucc : ∀ n, NatVal n → NatVal (Exp.Succ n)
+  | ValSucc : ∀ n, 
+    NatVal n → NatVal (Exp.Succ n)
 
-  abbrev ExpVal (e : Exp) := BoolVal e ∨ NatVal e 
+  abbrev ExpVal (e : Exp) 
+    := BoolVal e ∨ NatVal e 
 
   inductive EStep : Exp → Exp → Prop where 
-  | EPredZ : EStep (Exp.Pred Exp.Zero) Exp.Zero 
+  | EPredZ 
+    : EStep (Exp.Pred Exp.Zero) Exp.Zero 
   | EPredS : ∀ n, NatVal n → 
                   EStep (Exp.Pred (Exp.Succ n)) 
                         n 
-  | EIsZeroZ : EStep (Exp.IsZero Exp.Zero) Exp.True 
+  | EIsZeroZ 
+    : EStep (Exp.IsZero Exp.Zero) Exp.True 
   | EIsZeroS : ∀ n, NatVal n → 
                     EStep (Exp.IsZero (Exp.Succ n))
                           Exp.False 
@@ -143,14 +159,15 @@ section ARITH
 
   -- Exercício 
 
-  lemma NatValDontStep : ∀ (n : Exp), NatVal n → ¬ ∃ e, EStep n e := by 
+  lemma NatValDontStep : ∀ (n : Exp), 
+    NatVal n → ¬ ∃ e, EStep n e := by 
     intros n H
     induction H with 
     | ValZero => 
       intros H2 
       rcases H2 with ⟨ x , H2 ⟩ 
       rcases H2 
-    | ValSucc n Hn IH => 
+    | ValSucc n _Hn IH => 
       intros H2 
       rcases H2 with ⟨ e, H2 ⟩ 
       cases H2 with 
@@ -159,32 +176,9 @@ section ARITH
         exists e3 
 
   theorem EStep_deterministic (e1 e2 e3 : Exp)
-    : EStep e1 e2 → EStep e1 e3 → e2 = e3 := sorry  
-    -- intros H1 
-    -- induction H1 generalizing e3 with 
-    -- | EPredZ => 
-    --   intros H2 
-    --   cases H2 with 
-    --   | EPredZ => rfl
-    --   | EPred en1 en2 H => 
-    --     cases H 
-    -- | EPredS n Hn => 
-    --   intros H2 
-    --   cases H2 with 
-    --   | EPredS m Hm => rfl 
-    --   | EPred en1 en2 H => 
-    --     cases H with 
-    --     | ESucc e4 e5 H3 => 
-    --       have H4 : ¬ ∃ e, EStep n e := by 
-    --         apply NatValDontStep 
-    --         assumption 
-    --       have H5 : ∃ e, EStep n e := by 
-    --         exists e5 
-    --       contradiction
-    -- | EIsZeroZ => sorry 
-    -- | EIsZeroS => sorry 
-    -- 
-  
+    : EStep e1 e2 →
+      EStep e1 e3 → 
+      e2 = e3 := sorry  
 
   -- type system 
 
@@ -206,17 +200,10 @@ section ARITH
   -- Exercício
 
   theorem EType_deterministic (e1 : Exp)(t1 t2 : Ty) 
-    : EType e1 t1 → EType e1 t2 → t1 = t2 := sorry  
-    -- intros H1 
-    -- induction H1 with 
-    -- | TZero => intros H2 ; cases H2 ; rfl  
-    -- | TSucc e H1 IH1 => 
-    --   intros H2 
-    --   cases H2 with 
-    --   | TSucc e3 H3 => rfl
-    -- | TTrue => intros H2 ; cases H2 ; rfl 
-
-
+    : EType e1 t1 → 
+      EType e1 t2 → 
+      t1 = t2 := sorry  
+ 
   theorem Epreservation (e e' : Exp)(t : Ty) 
     : EType e t → EStep e e' → EType e' t := by 
     induction e generalizing e' t with 
@@ -285,7 +272,8 @@ section ARITH
 
   -- Exercício
 
-  theorem progress e t : EType e t → ExpVal e ∨ ∃ e', EStep e e' := 
+  theorem progress e t 
+    : EType e t → ExpVal e ∨ ∃ e', EStep e e' := 
     sorry 
 
 end ARITH 

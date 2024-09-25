@@ -51,8 +51,10 @@ def interp : List Instr → Stack → Stack
 @[simp]
 def compile : Expr → List Instr 
 | Expr.EConst n => [Instr.IPush n]
-| Expr.EPlus e1 e2 => compile e2 ++ compile e1 ++ [Instr.IAdd]
-| Expr.ETimes e1 e2 => compile e2 ++ compile e1 ++ [Instr.IMul]
+| Expr.EPlus e1 e2 => 
+  compile e2 ++ compile e1 ++ [Instr.IAdd]
+| Expr.ETimes e1 e2 => 
+  compile e2 ++ compile e1 ++ [Instr.IMul]
 
 -- propriedade fundamental: preservação da semântica
 -- resultado produzido pelo código compilado é igual ao do código fonte.
@@ -73,12 +75,15 @@ lemma interp_app
 lemma compile_preserves' 
   : ∀ e stk, interp (compile e) stk = (eval e) :: stk := by 
   intros e 
-  induction e <;> aesop (add safe [apply Nat.add_comm, apply Nat.mul_comm]) 
+  induction e <;> 
+    aesop (add safe [ apply Nat.add_comm
+                    , apply Nat.mul_comm]) 
 
 -- teorema final
 
 theorem compile_preserves e 
-  : interp (compile e) [] = [eval e] := compile_preserves' e []
+  : interp (compile e) [] = [eval e] := 
+    compile_preserves' e []
 
 
 -- semântica de uma linguagem imperativa 

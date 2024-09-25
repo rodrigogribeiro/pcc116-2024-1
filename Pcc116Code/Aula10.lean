@@ -15,7 +15,8 @@ inductive Even : ℕ → Prop where
 -- repeat' and first combinators
 -- repeat' t  
 
-lemma repeat'_example1 : Even 4 ∧ Even 10 ∧ Even 20 ∧ Even 50 := by 
+lemma repeat'_example1 
+  : Even 4 ∧ Even 10 ∧ Even 20 ∧ Even 50 := by 
   repeat' apply And.intro
   repeat' first 
           | apply Even.succ 
@@ -26,13 +27,14 @@ lemma repeat'_example1 : Even 4 ∧ Even 10 ∧ Even 20 ∧ Even 50 := by
 
 lemma repeat'_example2 : Even 4 ∧ Even 10 ∧ Even 20 ∧ Even 50 := by 
   repeat' apply And.intro 
-  repeat' constructor 
-
+  repeat' constructor
+  
 -- all_goals: apply a tactic in all goals generated.
 
 lemma repeat'_example3 : Even 4 ∧ Even 10 ∧ Even 20 ∧ Even 50 := by 
   repeat' apply And.intro 
   all_goals (repeat' constructor)
+
 
 -- simple custom tactic defined by a macro 
 
@@ -155,14 +157,17 @@ syntax "true" : imp_lit
 syntax "false" : imp_lit
 
 def elabLit : Syntax → MetaM Expr 
-| `(imp_lit| $n:num) => mkAppM ``Lit.INat #[mkNatLit n.getNat]
-| `(imp_lit| true) => mkAppM ``Lit.IBool #[.const ``Bool.true []]
-| `(imp_lit| false) => mkAppM ``Lit.IBool #[.const ``Bool.false []]
+| `(imp_lit| $n:num) => 
+  mkAppM ``Lit.INat #[mkNatLit n.getNat]
+| `(imp_lit| true) => 
+  mkAppM ``Lit.IBool #[.const ``Bool.true []]
+| `(imp_lit| false) =>
+  mkAppM ``Lit.IBool #[.const ``Bool.false []]
 | _ => throwUnsupportedSyntax
 
 elab "test_elabLit" l:imp_lit : term => elabLit l
 
-#reduce test_elabLit 3 
+#reduce test_elabLit 42
 #reduce test_elabLit true 
 
 declare_syntax_cat imp_unop

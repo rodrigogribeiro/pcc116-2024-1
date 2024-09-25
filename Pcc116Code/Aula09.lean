@@ -87,6 +87,16 @@ instance prodEq {A B : Type}
                     BoolEq.beq p1.2 p2.2
 } 
 
+instance optionEq {A : Type} [BoolEq A] 
+      : BoolEq (Option A) := {
+  beq := λ v1 v2 => match v1, v2 with 
+                    | Option.some x1, Option.some x2 => 
+                        BoolEq.beq x1 x2 
+                    | Option.none, Option.none => true 
+                    | _, _ => false 
+}
+
+#eval BoolEq.beq (true, Option.some 0) (false, Option.none)
 -- sobrecarga de literais 
 
 inductive Pos : Type where
@@ -122,6 +132,14 @@ instance posAdd : Add Pos := {
 
 -- class OfNat (A : Type)(n : ℕ) where 
 --   ofNat : A 
+
+instance : OfNat Bool 0 := { 
+  ofNat := false 
+} 
+
+instance : OfNat Bool (n + 1) := {
+  ofNat := true 
+}
 
 -- ℕ = {0, 1, 2, ... 
 -- P = {1, 2, 3, ...
@@ -164,7 +182,8 @@ def sum247 (xs : List ℕ) : Option ℕ :=
 --            repetição, caso que resulta em none 
 -- solução: abstrair o padrão 
 
-def connect {A B : Type} : Option A → (A → Option B) → Option B 
+def connect {A B : Type} 
+  : Option A → (A → Option B) → Option B 
 | .none, _ => .none 
 | .some x, f =>  f x
 
@@ -203,7 +222,7 @@ def sum247Do (xs : List ℕ) : Option ℕ :=
     let x7 ← nth xs 6 
     pure (x2 + x4 + x7)
 
-#eval sum247 (List.replicate 5 1)
+#eval sum247Do (List.replicate 5 1)
 
 /-
 # Mônadas
@@ -386,5 +405,4 @@ def evalProg : Stmt → (Env × Log)
   let res := State.runState (evalStmt s) ([], [])
   res.2 
 
--- outro exemplo de mônada: IO 
 

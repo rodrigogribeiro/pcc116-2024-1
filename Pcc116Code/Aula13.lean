@@ -13,6 +13,9 @@ inductive UTerm : ℕ → Type where
 | UApp : ∀ {n}, UTerm n → UTerm n → UTerm n 
 | ULam : ∀ {n}, UTerm (n + 1) → UTerm n 
 
+def idTerm : UTerm 0 :=
+  UTerm.ULam (UTerm.UVar UFin.Zero)
+
 -- tipos 
 
 inductive Idx {A : Type}(x : A) : List A → Type where 
@@ -23,17 +26,23 @@ def index {A : Type}{x : A}{xs} : Idx x xs → ℕ
 | Idx.Here => 0
 | Idx.There idx => (index idx) + 1
 
-inductive Lookup {A : Type}(xs : List A) : ℕ → Type where 
-| Inside : ∀ (x : A)(p : Idx x xs), Lookup xs (index p)
-| Outside : ∀ (m : ℕ), Lookup xs (m + List.length xs)
+inductive Lookup {A : Type}
+                 (xs : List A) : ℕ → Type where 
+| Inside : ∀ (x : A)(p : Idx x xs),
+             Lookup xs (index p)
+| Outside : ∀ (m : ℕ), 
+             Lookup xs (m + List.length xs)
 
-def lookup {A : Type} : (xs : List A) → (n : ℕ) → Lookup xs n 
+def lookup {A : Type} 
+  : (xs : List A) → (n : ℕ) → Lookup xs n 
 | [] , n => Lookup.Outside n
 | x :: _, 0 => Lookup.Inside x Idx.Here 
 | _ :: xs, n + 1 => 
   match lookup xs n with 
-  | Lookup.Inside y idx => Lookup.Inside y (Idx.There idx)
-  | Lookup.Outside m => Lookup.Outside m  
+  | Lookup.Inside y idx => 
+    Lookup.Inside y (Idx.There idx)
+  | Lookup.Outside m => 
+    Lookup.Outside m  
 
 -- type syntax 
 
@@ -76,6 +85,7 @@ instance : DecidableEq Ty := eqTy
 -- definition of untyped syntax 
 
 inductive Raw : Type where 
+| UBool : Bool → Raw 
 | UVar : ℕ → Raw 
 | UApp : Raw → Raw → Raw 
 | ULam : Ty → Raw → Raw 
@@ -86,6 +96,7 @@ deriving Repr
 abbrev Ctx := List Ty 
 
 inductive Term : Ctx → Ty → Type where 
+| TCon : Bool → Term ctx Ty.Base
 | TVar : ∀ {ctx t}, Idx t ctx → Term ctx t 
 | TApp : ∀ {ctx t t'}, Term ctx (Ty.Arr t t') → 
                        Term ctx t → 
@@ -94,6 +105,7 @@ inductive Term : Ctx → Ty → Type where
                        Term ctx (Ty.Arr t t')
 
 def erase {ctx t} : Term ctx t → Raw 
+| Term.TCon b => Raw.UBool b 
 | Term.TVar idx => Raw.UVar (index idx)
 | Term.TApp t1 t2 => Raw.UApp (erase t1) (erase t2)
 | Term.TLam t t1 => Raw.ULam t (erase t1)
@@ -101,13 +113,16 @@ def erase {ctx t} : Term ctx t → Raw
 -- certified type checker 
 
 inductive Check (ctx : Ctx) : Raw → Type where 
-| Ok : ∀ (t : Ty)(e : Term ctx t), Check ctx (erase e)
+| Ok : ∀ (t : Ty)(e : Term ctx t), 
+    Check ctx (erase e)
 | Bad : ∀ {e : Raw}, Check ctx e
 
 def check : ∀ (ctx : Ctx)(e : Raw), Check ctx e
+| _ , Raw.UBool b => Check.Ok Ty.Base (Term.TCon b)
 | ctx, Raw.UVar n => 
     match lookup ctx n with 
-    | Lookup.Inside t idx => Check.Ok t (Term.TVar idx)
+    | Lookup.Inside t idx => 
+      Check.Ok t (Term.TVar idx)
     | Lookup.Outside _ => Check.Bad 
 | ctx, Raw.UApp e1 e2 => 
     match check ctx e1, check ctx e2 with 
@@ -121,7 +136,8 @@ def check : ∀ (ctx : Ctx)(e : Raw), Check ctx e
     | _, _ => Check.Bad
 | ctx, Raw.ULam t e1 => 
     match check (t :: ctx) e1 with 
-    | Check.Ok t' tm1 => Check.Ok _ (Term.TLam t tm1)
+    | Check.Ok t' tm1 => 
+      Check.Ok _ (Term.TLam t tm1)
     | Check.Bad => Check.Bad 
 
 -- defining the semantics by embedding it into Lean 
@@ -141,13 +157,43 @@ def semEnv : Ctx → Type
 
 -- 3. interpreting indexes 
 
-def semIdx {ctx t} : Idx t ctx → semEnv ctx → t.asType 
+def semIdx {ctx t} : Idx t ctx → 
+                     semEnv ctx → t.asType 
 | Idx.Here, (v, _) => v
 | Idx.There idx, (_, env) => semIdx idx env
 
 -- 4. interpreting terms 
 
-def interp {ctx t} : Term ctx t → semEnv ctx → t.asType 
-| Term.TVar idx, env => semIdx idx env 
-| Term.TApp t1 t2, env => (interp t1 env) (interp t2 env)
+def interp {ctx t} : Term ctx t → 
+                     semEnv ctx → 
+                     t.asType
+| Term.TCon b, _ => b 
+| Term.TVar idx, env => 
+  semIdx idx env 
+| Term.TApp t1 t2, env => 
+  (interp t1 env) (interp t2 env)
 | Term.TLam _ t, env => λ v => interp t (v, env) 
+
+def idTerm1 : Term [] (Ty.Arr Ty.Base Ty.Base) := by 
+  apply Term.TLam
+  apply Term.TVar 
+  apply Idx.Here 
+
+def falseTerm1 : Term [] Ty.Base := Term.TCon false 
+
+def call := Term.TApp idTerm1 falseTerm1 
+
+#eval interp call Unit.unit 
+
+
+
+
+
+
+
+
+
+
+
+
+

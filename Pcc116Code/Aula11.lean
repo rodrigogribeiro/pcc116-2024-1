@@ -234,13 +234,13 @@ theorem div2_correct
       split
       · 
         simp at * 
-        rcases IH with ⟨ q, Heq ⟩ 
-        exists q
+        rcases IH with ⟨ r, Heq ⟩ 
+        exists r
         rw [ Nat.mul_add
            , Nat.mul_one
            , Nat.add_assoc _ m
-           , Nat.add_comm m q
-           , ← Nat.add_assoc _ q
+           , Nat.add_comm m r
+           , ← Nat.add_assoc _ r
            , ← Heq
            , ← Nat.sub_add_comm
            , Nat.add_sub_cancel]
@@ -275,16 +275,21 @@ def div3F {n m} : DivDom n m → ℕ
 -- tendo definido a função, o próximo passo é mostrar a totalidade do 
 -- predicado para o domínio.
 
-def divDom : ∀ (n m : ℕ), m ≠ 0 → DivDom n m
-| 0, 0, Heq => by 
-  simp at *
-| 0, m + 1, _Heq => DivDom.Base1 m 
-| n + 1, 1, _Heq => DivDom.Base2 n 
-| n + 1, (m + 1) + 1, _Heq => by 
-  apply DivDom.Step
-  apply divDom 
-  intros H 
-  rcases H 
+def divDom : ∀ (n m : ℕ), m ≠ 0 → DivDom n m := by 
+  intros n m Heq 
+  cases n <;> cases m 
+  · 
+    simp at * 
+  · 
+    apply DivDom.Base1 
+  · 
+    simp at * 
+  · 
+    rename_i n m 
+    apply DivDom.Step 
+    apply divDom 
+    assumption 
+
 
 -- combinando a definição e totalidade do predicado 
 
@@ -329,7 +334,7 @@ def Nat.decide (n m : ℕ) : NatDec n m :=
         apply NatDec.EQ 
       | GT _ H =>
         apply NatDec.GT 
-        linarith 
+        omega  
 
 inductive Dom : ℕ → ℕ → Type 
 | DomLt : ∀ n m, n < m → Dom n m 
@@ -367,7 +372,8 @@ def div4 (n m : ℕ)(H : m ≠ 0) : ℕ × ℕ :=
   div4F n m (dom n m H)
 
 lemma div4F_correct (n m : ℕ)
-  : (d : Dom n m) → ∃ q r, div4F n m d = (q,r) ∧ n = m * q + r ∧ r < m
+  : (d : Dom n m) → ∃ q r, div4F n m d = (q,r) ∧ 
+    n = m * q + r ∧ r < m
   | Dom.DomLt n m H => by 
     exists 0
     exists n 

@@ -407,13 +407,32 @@ section RE
   lemma sum_le_or : ∀ (a b c d : ℕ),
     a + b ≤ c + d → (a ≤ c) ∨ (b ≤ d) := by 
     intros a b c d H 
-    omega 
+    omega
 
-  theorem pumping_lemma 
+  lemma gt_or_le : ∀ (a b : ℕ), a > b ∨ a ≤ b := by 
+    intros a 
+    induction' a <;> intros b 
+    · 
+      cases b <;> right <;> simp  
+    · 
+      rename_i n IH 
+      cases b 
+      · 
+        left ; simp 
+      · 
+        rename_i m
+        specialize IH m 
+        rcases IH with IH | IH 
+        · 
+          left ; omega 
+        · 
+          right ; omega     
+
+  theorem weak_pumping_lemma 
     : ∀ e z, z <<- e → 
              pumping_value e ≤ List.length z →
       ∃ u v w, z = u ++ v ++ w ∧  
-               List.length (u ++ v) ≤ pumping_value e ∧  
+               v ≠ [] ∧ 
                ∀ i, (u ++ napp i v ++ w) <<- e := by 
       intros e z H 
       induction H with 
@@ -426,73 +445,262 @@ section RE
       | mcat e1 e2 s1 s2 H1 H2 IH1 IH2 => 
         intros H3
         simp [pumping_value] at H3
-        have H31 : pumping_value e1 ≤ List.length s1 ∨ 
-                   pumping_value e2 ≤ List.length s2 := by 
-          apply sum_le_or ; assumption 
+        have H31 : pumping_value e1 < List.length s1 ∨ 
+                   pumping_value e1 ≥ List.length s1 := by 
+          apply gt_or_le 
         rcases H31 with H31 | H31 
         · 
-          have H4 : ∃ u v w, s1 = u ++ v ++ w ∧ 
-                            List.length (u ++ v) ≤ pumping_value e1 ∧ 
-                            ∀ (i : ℕ), u ++ napp i v ++ w <<- e1 := by 
-            apply IH1 ; assumption 
-          rcases H4 with ⟨ u1, v1, w1, Heqs1, H3le, H3i ⟩
+          have H41 : pumping_value e1 ≤ List.length s1 := by omega 
+          specialize IH1 H41 
+          rcases IH1 with ⟨ u1, v1 , w1, H51, H52, H54 ⟩ 
           exists u1 
-          exists v1
+          exists v1 
           exists (w1 ++ s2)
-          rw [← List.append_assoc, Heqs1]
-          simp 
-          apply And.intro 
-          · 
-            simp [pumping_value]
-            rw [Heqs1] at H3
-            simp [List.length_append] at H3le
-            omega
-          · 
-            intros i 
-            have H5 : u1 ++ (napp i v1 ++ (w1 ++ s2)) = 
-                      (u1 ++ napp i v1 ++ w1) ++ s2 := by 
-              simp [List.append_assoc]
-            rw [H5]
-            constructor 
-            apply H3i
-            assumption
+          simp [H51]
+          constructor <;> try assumption 
+          intros i 
+          specialize H54 i 
+          have H6 : u1 ++ (napp i v1 ++ (w1 ++ s2)) = 
+                   (u1 ++ (napp i v1) ++ w1) ++ s2 := by simp 
+          rw [H6]
+          constructor <;> assumption 
         · 
-          sorry 
+          have H6 : ∀ (a b c d : ℕ), a + c ≤ b + d → 
+                                     a ≥ b → 
+                                     c ≤ d := by omega 
+          have H7 : pumping_value e2 ≤ List.length s2 := by 
+            apply H6 <;> assumption 
+          specialize IH2 H7 
+          rcases IH2 with ⟨ u2, v2, w2, H51, H52, H54 ⟩ 
+          exists (s1 ++ u2)
+          exists v2 
+          exists w2 
+          simp [H51]
+          constructor <;> try assumption  
+          intros i 
+          specialize H54 i 
+          constructor
+          exact H1 
+          rw [← List.append_assoc]
+          exact H54 
       | minl e1 e2 s1 H1 IH1 => 
         intros H2 
         simp [pumping_value] at H2 
         have H3 : pumping_value e1 ≤ List.length s1 := by 
           omega 
         have H4 : ∃ u v w, s1 = u ++ v ++ w ∧ 
-                  List.length (u ++ v) ≤ pumping_value e1 ∧ 
+                  v ≠ [] ∧ 
                   ∀ (i : ℕ), u ++ napp i v ++ w <<- e1 := by 
           apply IH1 ; assumption 
-        rcases H4 with ⟨ u1, v1, w1, Heqs1, Hles1, His1 ⟩ 
+        rcases H4 with ⟨ u1, v1, w1, Heqs1, Heq1, His1 ⟩ 
         exists u1
         exists v1 
         exists w1 
         simp [Heqs1, pumping_value]
         rw [Heqs1] at H2
-        simp [List.length_append] at Hles1 
-        apply And.intro 
-        · 
-          omega 
+        apply And.intro <;> try assumption  
         · 
           intros i 
           rw [← List.append_assoc]
           constructor 
           apply His1
-      | minr e1 e2 H2 IH2 => sorry 
+      | minr e1 e2 s2 H2 IH2 =>
+        intros H2 
+        simp [pumping_value] at H2 
+        have H3 : pumping_value e2 ≤ List.length s2 := by 
+          omega 
+        have H4 : ∃ u v w, s2 = u ++ v ++ w ∧ 
+                  v ≠ [] ∧ 
+                  ∀ (i : ℕ), u ++ napp i v ++ w <<- e2 := by 
+          apply IH2 ; assumption 
+        rcases H4 with ⟨ u1, v1, w1, Heqs1, Heq1, His1 ⟩ 
+        exists u1
+        exists v1 
+        exists w1 
+        simp [Heqs1, pumping_value]
+        rw [Heqs1] at H2
+        constructor <;> try assumption 
+        intros i 
+        rw [← List.append_assoc]
+        apply regex_match.minr  
+        apply His1
       | mnil e1 => 
         intros H 
         simp [pumping_value] at *
-        rw [H]
-        simp 
         exists []
         exists []
         exists []
         simp [napp_nil]
-        constructor 
-      | mcons e1 s1 s2 H1 H2 IH1 IH2 => sorry 
+        apply pumping_value_neq_0 
+        assumption 
+      | mcons e1 s1 s2 H1 H2 IH1 IH2 =>
+        intros H3 
+        simp [pumping_value] at H3
+        cases s1 
+        · 
+          simp [pumping_value] at *
+          specialize IH2 H3 
+          rcases IH2 with ⟨ u2, v2, w2, H31, H32, H33 ⟩ 
+          exists u2 
+          exists v2 
+          exists w2 
+        · 
+          rename_i c cs 
+          simp [pumping_value] at *
+          exists []
+          exists (c :: cs)
+          exists s2 
+          simp 
+          intros i 
+          apply napp_star <;> try assumption 
+
+  -- theorem pumping_lemma 
+  --   : ∀ e z, z <<- e → 
+  --            pumping_value e ≤ List.length z →
+  --     ∃ u v w, z = u ++ v ++ w ∧  
+  --              List.length (u ++ v) ≤ pumping_value e ∧  
+  --              v ≠ [] ∧ 
+  --              ∀ i, (u ++ napp i v ++ w) <<- e := by 
+  --     intros e z H 
+  --     induction H with 
+  --     | mlambda => 
+  --       intros H1 
+  --       exists []
+  --     | mchr c =>
+  --       intros H1 
+  --       exists []
+  --     | mcat e1 e2 s1 s2 H1 H2 IH1 IH2 => 
+  --       intros H3
+  --       simp [pumping_value] at H3
+  --       have H31 : pumping_value e1 < List.length s1 ∨ 
+  --                  pumping_value e1 ≥ List.length s1 := by 
+  --         apply gt_or_le 
+  --       rcases H31 with H31 | H31 
+  --       · 
+  --         have H41 : pumping_value e1 ≤ List.length s1 := by omega 
+  --         specialize IH1 H41 
+  --         rcases IH1 with ⟨ u1, v1 , w1, H51, H52, H53, H54 ⟩ 
+  --         exists u1 
+  --         exists v1 
+  --         exists (w1 ++ s2)
+  --         simp [H51]
+  --         constructor <;> try assumption
+  --         simp at H52 
+  --         simp [pumping_value] 
+  --         omega 
+  --         constructor <;> try assumption 
+  --         intros i 
+  --         specialize H54 i 
+  --         have H6 : u1 ++ (napp i v1 ++ (w1 ++ s2)) = 
+  --                  (u1 ++ (napp i v1) ++ w1) ++ s2 := by simp 
+  --         rw [H6]
+  --         constructor <;> assumption 
+  --       · 
+  --         have H6 : ∀ (a b c d : ℕ), a + c ≤ b + d → 
+  --                                    a ≥ b → 
+  --                                    c ≤ d := by omega 
+  --         have H7 : pumping_value e2 ≤ List.length s2 := by 
+  --           apply H6 <;> assumption 
+  --         specialize IH2 H7 
+  --         rcases IH2 with ⟨ u2, v2, w2, H51, H52, H53, H54 ⟩ 
+  --         exists (s1 ++ u2)
+  --         exists v2 
+  --         exists w2 
+  --         simp [H51]
+  --         constructor <;> try assumption  
+  --         simp [pumping_value] 
+  --         simp at H52 
+  --         omega 
+  --         constructor <;> try assumption 
+  --         intros i 
+  --         specialize H54 i 
+  --         constructor
+  --         exact H1 
+  --         rw [← List.append_assoc]
+  --         exact H54 
+  --     | minl e1 e2 s1 H1 IH1 => 
+  --       intros H2 
+  --       simp [pumping_value] at H2 
+  --       have H3 : pumping_value e1 ≤ List.length s1 := by 
+  --         omega
+  --       specialize IH1 H3 
+  --       rcases IH1 with ⟨ u1, v1, w1, Heqs1, Heq1, Hne, His1 ⟩ 
+  --       exists u1
+  --       exists v1 
+  --       exists w1 
+  --       simp [Heqs1, pumping_value]
+  --       rw [Heqs1] at H2
+  --       simp at H2 
+  --       simp at Heq1
+  --       apply And.intro <;> try assumption
+  --       · 
+  --         omega 
+  --       · 
+  --         constructor <;> try assumption 
+  --         intros i 
+  --         rw [← List.append_assoc]
+  --         constructor 
+  --         apply His1
+  --     | minr e1 e2 s2 H2 IH2 =>
+  --       intros H2 
+  --       simp [pumping_value] at H2 
+  --       have H3 : pumping_value e2 ≤ List.length s2 := by 
+  --         omega
+  --       specialize IH2 H3 
+  --       rcases IH2 with ⟨ u1, v1, w1, Heqs1, Heq1, Hne, His1 ⟩ 
+  --       exists u1
+  --       exists v1 
+  --       exists w1 
+  --       simp [Heqs1, pumping_value]
+  --       rw [Heqs1] at H2
+  --       simp at Heq1 
+  --       simp at H2 
+  --       constructor <;> try assumption 
+  --       omega 
+  --       constructor <;> try assumption 
+  --       intros i 
+  --       rw [← List.append_assoc]
+  --       apply regex_match.minr  
+  --       apply His1
+  --     | mnil e1 => 
+  --       intros H 
+  --       simp [pumping_value] at *
+  --       exists []
+  --       exists []
+  --       exists []
+  --       simp [napp_nil]
+  --       apply pumping_value_neq_0 
+  --       assumption 
+  --     | mcons e1 s1 s2 H1 H2 IH1 IH2 =>
+  --       intros H3 
+  --       simp [pumping_value] at H3
+  --       cases s2 
+  --       · 
+  --         simp [pumping_value] at *
+  --         specialize IH1 H3 
+  --         rcases IH1 with ⟨ u2, v2, w2, H31, H32, H33, H34 ⟩ 
+  --         exists u2 
+  --         exists v2 
+  --         exists w2 
+  --         simp [H31]
+  --         constructor <;> try assumption 
+  --         constructor <;> try assumption
+  --         intros i
+  --         specialize H34 i 
+  --         sorry 
+  --       · 
+  --         rename_i c cs 
+  --         simp [pumping_value] at *
+  --         exists s1
+  --         exists (c :: cs)
+  --         exists [] 
+  --         simp 
+  --         constructor
+  --         
+  --         intros i 
+  --         apply napp_star <;> try assumption 
+  --
+  --
+
 
 end RE 

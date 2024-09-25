@@ -646,6 +646,41 @@ theorem starr_sound : ∀ e1 e2 s,
     exact H5 
     rfl 
 
+lemma starr_complete 
+  : ∀ e1 s, s <<- e1 → 
+            s <<- (starr e1) := by 
+    intros e1
+    induction' e1 <;> intros s H2  
+    · 
+      rcases H2
+    · 
+      rcases H2 ; simp [starr] at *
+      constructor 
+    · 
+      rename_i c 
+      simp [starr] at *
+      rcases H2 
+      apply star_one 
+      constructor 
+    · 
+      rename_i a1 a2 IH1 IH2
+      rcases H2 
+      rename_i H1 H2 H3 
+      simp [starr]
+      apply star_one 
+      constructor
+      exact H2 
+      exact H3 
+      exact H1 
+    · 
+      rename_i a1 a2 IH1 IH2 
+      apply star_one 
+      assumption 
+    · 
+      rename_i e1 IH1
+      simp [starr] 
+      assumption 
+
 def deriv : regex → Char → regex 
 | regex.empty, _ => regex.empty 
 | regex.lambda, _ => regex.empty 
@@ -766,5 +801,21 @@ theorem deriv_sound
       exact H5 
       rfl 
 
-        
-
+theorem deriv_complete 
+  : ∀ e a s, (a :: s) <<- e → 
+             s <<- (deriv e a) := by 
+      intros e 
+      induction' e <;> intros a s H <;> rcases H 
+      · 
+        simp [deriv]
+        constructor 
+      · 
+        rename_i e1 e2 s1 s2 H1 H2 Heq IH1 IH2 
+        simp [deriv]
+        split 
+        · 
+          rename_i Hn
+          sorry 
+        · 
+          sorry 
+      all_goals sorry 
